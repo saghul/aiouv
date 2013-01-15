@@ -153,7 +153,7 @@ def wait(fs, timeout=None, return_when=ALL_COMPLETED):
 
     Usage:
 
-        done, pending = yield from tulip.wait(fs)
+        done, pending = yield from rose.wait(fs)
 
     Note: This does not raise TimeoutError!  Futures that aren't done
     when the timeout occurs are returned in the second set.

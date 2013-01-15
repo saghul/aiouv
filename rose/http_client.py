@@ -28,7 +28,7 @@ import email.message
 import email.parser
 import re
 
-import tulip
+import rose
 from . import events
 from . import futures
 from . import tasks
@@ -204,7 +204,7 @@ class HttpClientProtocol:
                    '{} cannot contain whitespace ({!r})'.format(name, value)
         return value
 
-    @tulip.coroutine
+    @rose.coroutine
     def connect(self):
         yield from self.event_loop.create_transport(lambda: self,
                                                     self.host,
