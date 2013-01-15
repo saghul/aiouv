@@ -245,9 +245,8 @@ class DefaultEventLoopPolicy(threading.local, EventLoopPolicy):
         You must call set_event_loop() to make this the current event
         loop.
         """
-        # TODO: Do something else for Windows.
-        from . import unix_events
-        return unix_events.UnixEventLoop()
+        from . import uv
+        return uv.EventLoop()
 
 
 # Event loop policy.  The policy itself is always global, even if the
