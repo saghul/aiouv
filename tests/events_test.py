@@ -10,11 +10,9 @@ import threading
 import time
 import unittest
 
-from . import events
-from . import transports
-from . import protocols
-from . import selectors
-from . import unix_events
+from common import unittest, socketpair
+
+from rose import events, transports, protocols
 
 
 class MyProto(protocols.Protocol):
@@ -38,11 +36,10 @@ class MyProto(protocols.Protocol):
         self.state = 'CLOSED'
 
 
-class EventLoopTestsMixin:
+class EventLoopTests(unittest.TestCase):
 
     def setUp(self):
-        self.selector = self.SELECTOR_CLASS()
-        self.event_loop = unix_events.UnixEventLoop(self.selector)
+        self.event_loop = events.new_event_loop()
         events.set_event_loop(self.event_loop)
 
     def tearDown(self):
@@ -192,7 +189,7 @@ class EventLoopTestsMixin:
 
     def testReaderCallback(self):
         el = events.get_event_loop()
-        r, w = unix_events.socketpair()
+        r, w = socketpair()
         bytes_read = []
         def reader():
             data = r.recv(1024)
@@ -210,7 +207,7 @@ class EventLoopTestsMixin:
 
     def testReaderCallbackWithHandler(self):
         el = events.get_event_loop()
-        r, w = unix_events.socketpair()
+        r, w = socketpair()
         bytes_read = []
         def reader():
             data = r.recv(1024)
@@ -229,7 +226,7 @@ class EventLoopTestsMixin:
 
     def testWriterCallback(self):
         el = events.get_event_loop()
-        r, w = unix_events.socketpair()
+        r, w = socketpair()
         w.setblocking(False)
         el.add_writer(w.fileno(), w.send, b'x'*(256*1024))
         el.call_later(0.1, el.remove_writer, w.fileno())
@@ -241,7 +238,7 @@ class EventLoopTestsMixin:
 
     def testWriterCallbackWithHandler(self):
         el = events.get_event_loop()
-        r, w = unix_events.socketpair()
+        r, w = socketpair()
         w.setblocking(False)
         handler = events.Handler(None, w.send, (b'x'*(256*1024),))
         self.assertEqual(el.add_writer(w.fileno(), handler), handler)
@@ -383,26 +380,6 @@ class EventLoopTestsMixin:
         el.run_once()
         sock.close()
         client.close()
-
-
-if hasattr(selectors, 'KqueueSelector'):
-    class KqueueEventLoopTests(EventLoopTestsMixin, unittest.TestCase):
-        SELECTOR_CLASS = selectors.KqueueSelector
-
-
-if hasattr(selectors, 'EpollSelector'):
-    class EPollEventLoopTests(EventLoopTestsMixin, unittest.TestCase):
-        SELECTOR_CLASS = selectors.EpollSelector
-
-
-if hasattr(selectors, 'PollSelector'):
-    class PollEventLoopTests(EventLoopTestsMixin, unittest.TestCase):
-        SELECTOR_CLASS = selectors.PollSelector
-
-
-# Should always exist.
-class SelectEventLoopTests(EventLoopTestsMixin, unittest.TestCase):
-    SELECTOR_CLASS = selectors.SelectSelector
 
 
 class HandlerTests(unittest.TestCase):

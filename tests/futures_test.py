@@ -1,8 +1,8 @@
 """Tests for futures.py."""
 
-import unittest
+from common import unittest
 
-from . import futures
+from rose import futures
 
 
 class FutureTests(unittest.TestCase):
