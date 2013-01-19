@@ -41,6 +41,7 @@ Signals
 Signals are not handled using Python's `signal` module but using pyuv's
 Signal handles. These handles allow signals to be processed on any thread
 and on multiple event loops at the same time (all callbacks will be called).
+Callbacks are always called on the event loop thread.
 
 Currently Signal handles are ref'd, this means that if an event loop has a single
 signal handler and loop.run() is called, it will not return unless the signal handler
