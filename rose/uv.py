@@ -4,10 +4,13 @@ import concurrent.futures
 import errno
 import logging
 import pyuv
-import ssl
 import socket
 import sys
 
+try:
+    import ssl
+except ImportError:
+    ssl = None
 try:
     import signal
 except ImportError:
@@ -38,7 +41,6 @@ class EventLoop(events.EventLoop):
 
         self._fd_map = {}
         self._signal_handlers = {}
-        self._everytime = []
         self._ready = collections.deque()
         self._timers = collections.deque()
 
@@ -95,7 +97,6 @@ class EventLoop(events.EventLoop):
     def close(self):
         self._fd_map.clear()
         self._signal_handlers.clear()
-        self._everytime.clear()
         self._ready.clear()
         self._timers.clear()
 
@@ -144,11 +145,6 @@ class EventLoop(events.EventLoop):
         self._waker.send()
         return handler
 
-    def call_every_iteration(self, callback, *args):
-        handler = events.make_handler(None, callback, args)
-        self._everytime.append(handler)
-        return handler
-
     # Methods returning Futures for interacting with threads.
 
     def wrap_future(self, future):
@@ -187,10 +183,11 @@ class EventLoop(events.EventLoop):
         return self.run_in_executor(None, socket.getnameinfo, sockaddr, flags)
 
     @tasks.task
-    def create_transport(self, protocol_factory, host, port, *, ssl=False,
-                         family=0, type=socket.SOCK_STREAM, proto=0, flags=0):
+    def create_connection(self, protocol_factory, host, port, *, ssl=False,
+                          family=0, proto=0, flags=0):
         infos = yield from self.getaddrinfo(host, port,
-                                            family=family, type=type,
+                                            family=family,
+                                            type=socket.SOCK_STREAM,
                                             proto=proto, flags=flags)
         if not infos:
             raise socket.error('getaddrinfo() returned empty list')
@@ -220,21 +217,21 @@ class EventLoop(events.EventLoop):
                 raise socket.error('Multiple exceptions: {}'.format(
                     ', '.join(str(exc) for exc in exceptions)))
         protocol = protocol_factory()
+        waiter = futures.Future()
         if ssl:
             sslcontext = None if isinstance(ssl, bool) else ssl
-            waiter = futures.Future()
             transport = _SslTransport(self, sock, protocol, sslcontext, waiter)
-            yield from waiter
         else:
-            transport = _SocketTransport(self, sock, protocol)
+            transport = _SocketTransport(self, sock, protocol, waiter)
+        yield from waiter
         return transport, protocol
 
     @tasks.task
     def start_serving(self, protocol_factory, host, port, *,
-                      family=0, type=socket.SOCK_STREAM, proto=0, flags=0,
-                      backlog=100):
+                      family=0, proto=0, flags=0, backlog=100):
         infos = yield from self.getaddrinfo(host, port,
-                                            family=family, type=type,
+                                            family=family,
+                                            type=socket.SOCK_STREAM,
                                             proto=proto, flags=flags)
         if not infos:
             raise socket.error('getaddrinfo() returned empty list')
@@ -244,6 +241,7 @@ class EventLoop(events.EventLoop):
         for family, type, proto, cname, address in infos:
             sock = socket.socket(family=family, type=type, proto=proto)
             try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 sock.bind(address)
             except socket.error as exc:
                 sock.close()
@@ -299,7 +297,7 @@ class EventLoop(events.EventLoop):
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
-            pass
+            return False
         else:
             poll_h.stop()
             poll_h.pevents &= ~pyuv.UV_READABLE
@@ -309,6 +307,7 @@ class EventLoop(events.EventLoop):
                 poll_h.close()
             else:
                 poll_h.start(poll_h.pevents, self._poll_cb)
+            return True
 
     def add_writer(self, fd, callback, *args):
         handler = events.make_handler(None, callback, args)
@@ -330,7 +329,7 @@ class EventLoop(events.EventLoop):
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
-            pass
+            return False
         else:
             poll_h.stop()
             poll_h.pevents &= ~pyuv.UV_WRITABLE
@@ -340,6 +339,7 @@ class EventLoop(events.EventLoop):
                 poll_h.close()
             else:
                 poll_h.start(poll_h.pevents, self._poll_cb)
+            return True
 
     add_connector = add_writer
 
@@ -481,9 +481,6 @@ class EventLoop(events.EventLoop):
         # Check if there are cancelled timers, if so close the handles
         self._check_timers()
 
-        # Add everytime handlers, skipping cancelled ones
-        self._check_everytimes()
-
         # If there is something ready to be run, prevent the loop from blocking for i/o
         if self._ready:
             self._ticker.ref()
@@ -496,16 +493,6 @@ class EventLoop(events.EventLoop):
             del timer.handler
             timer.close()
             self._timers.remove(timer)
-
-    def _check_everytimes(self):
-        any_cancelled = False
-        for handler in self._everytime:
-            if handler.cancelled:
-                any_cancelled = True
-            else:
-                self._ready.append(handler)
-        if any_cancelled:
-            self._everytime = [handler for handler in self._everytime if not handler.cancelled]
 
     def _timer_cb(self, timer):
         if timer.handler.cancelled:
@@ -530,25 +517,40 @@ class EventLoop(events.EventLoop):
             # An error happened, signal both readability and writability and
             # let the error propagate
             if poll_h.read_handler is not None:
-                self._ready.append(poll_h.read_handler)
+                if poll_h.read_handler.cancelled:
+                    self.remove_reader(poll_h.fd)
+                else:
+                    self._ready.append(poll_h.read_handler)
             if poll_h.write_handler is not None:
-                self._ready.append(poll_h.write_handler)
+                if poll_h.write_handler.cancelled:
+                    self.remove_writer(poll_h.fd)
+                else:
+                    self._ready.append(poll_h.write_handler)
             return
 
         old_events = poll_h.pevents
+        modified = False
 
         if events & pyuv.UV_READABLE:
             if poll_h.read_handler is not None:
-                self._ready.append(poll_h.read_handler)
+                if poll_h.read_handler.cancelled:
+                    self.remove_reader(poll_h.fd)
+                    modified = True
+                else:
+                    self._ready.append(poll_h.read_handler)
             else:
                 poll_h.pevents &= ~pyuv.UV_READABLE
         if events & pyuv.UV_WRITABLE:
             if poll_h.write_handler is not None:
-                self._ready.append(poll_h.write_handler)
+                if poll_h.write_handler.cancelled:
+                    self.remove_writer(poll_h.fd)
+                    modified = True
+                else:
+                    self._ready.append(poll_h.write_handler)
             else:
                 poll_h.pevents &= ~pyuv.UV_WRITABLE
 
-        if old_events != poll_h.pevents:
+        if not modified and old_events != poll_h.pevents:
             # Rearm the handle
             poll_h.stop()
             poll_h.start(poll_h.pevents, self._poll_cb)
@@ -576,6 +578,7 @@ class EventLoop(events.EventLoop):
     def _create_poll_handle(self, fdobj):
         fd = self._fileobj_to_fd(fdobj)
         poll_h = pyuv.Poll(self._loop, fd)
+        poll_h.fd = fd
         poll_h.pevents = 0
         poll_h.read_handler = None
         poll_h.write_handler = None
@@ -611,13 +614,15 @@ class EventLoop(events.EventLoop):
             raise RuntimeError('Signals are not supported')
         if not (1 <= sig < signal.NSIG):
             raise ValueError('sig {} out of range(1, {})'.format(sig, signal.NSIG))
+        if sys.platform == 'win32':
+            raise RuntimeError('Signals are not really supported on Windows')
 
 
 # Transports
 
 class _SocketTransport(transports.Transport):
 
-    def __init__(self, event_loop, sock, protocol):
+    def __init__(self, event_loop, sock, protocol, waiter=None):
         self._event_loop = event_loop
         self._sock = sock
         self._protocol = protocol
@@ -625,6 +630,8 @@ class _SocketTransport(transports.Transport):
         self._closing = False  # Set when close() called.
         self._event_loop.add_reader(self._sock.fileno(), self._read_ready)
         self._event_loop.call_soon(self._protocol.connection_made, self)
+        if waiter is not None:
+            self._event_loop.call_soon(waiter.set_result, None)
 
     def _read_ready(self):
         try:
@@ -658,7 +665,7 @@ class _SocketTransport(transports.Transport):
                 return
             if n:
                 data = data[n:]
-            self.add_writer(self._sock.fileno(), self._write_ready)
+            self._event_loop.add_writer(self._sock.fileno(), self._write_ready)
         self._buffer.append(data)
 
     def _write_ready(self):

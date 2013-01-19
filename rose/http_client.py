@@ -85,7 +85,11 @@ class StreamReader:
                     self.buffer.appendleft(tail)
                 self.line_count -= 1
                 break
-        return b''.join(parts)
+
+        line = b''.join(parts)
+        self.byte_count -= len(line)
+
+        return line
 
     @tasks.coroutine
     def read(self, n=-1):
@@ -206,10 +210,10 @@ class HttpClientProtocol:
 
     @rose.coroutine
     def connect(self):
-        yield from self.event_loop.create_transport(lambda: self,
-                                                    self.host,
-                                                    self.port,
-                                                    ssl=self.ssl)
+        yield from self.event_loop.create_connection(lambda: self,
+                                                     self.host,
+                                                     self.port,
+                                                     ssl=self.ssl)
         # TODO: A better mechanism to return all info from the
         # status line, all headers, and the buffer, without having
         # an N-tuple return value.

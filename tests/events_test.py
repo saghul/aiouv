@@ -6,6 +6,11 @@ import os
 import select
 import signal
 import socket
+try:
+    import ssl
+except ImportError:
+    ssl = None
+import sys
 import threading
 import time
 import unittest
@@ -126,37 +131,6 @@ class EventLoopTests(unittest.TestCase):
         self.assertEqual(results, ['hello', 'world'])
         self.assertTrue(t1-t0 >= 0.09)
 
-    def testCallEveryIteration(self):
-        el = events.get_event_loop()
-        results = []
-        def callback(arg):
-            results.append(arg)
-        handler = el.call_every_iteration(callback, 'ho')
-        el.run_once()
-        self.assertEqual(results, ['ho'])
-        el.run_once()
-        el.run_once()
-        self.assertEqual(results, ['ho', 'ho', 'ho'])
-        handler.cancel()
-        el.run_once()
-        self.assertEqual(results, ['ho', 'ho', 'ho'])
-
-    def testCallEveryIterationWithHandler(self):
-        el = events.get_event_loop()
-        results = []
-        def callback(arg):
-            results.append(arg)
-        handler = events.Handler(None, callback, ('ho',))
-        self.assertEqual(el.call_every_iteration(handler), handler)
-        el.run_once()
-        self.assertEqual(results, ['ho'])
-        el.run_once()
-        el.run_once()
-        self.assertEqual(results, ['ho', 'ho', 'ho'])
-        handler.cancel()
-        el.run_once()
-        self.assertEqual(results, ['ho', 'ho', 'ho'])
-
     def testWrapFuture(self):
         el = events.get_event_loop()
         def run(arg):
@@ -192,11 +166,16 @@ class EventLoopTests(unittest.TestCase):
         r, w = socketpair()
         bytes_read = []
         def reader():
-            data = r.recv(1024)
+            try:
+                data = r.recv(1024)
+            except BlockingIOError:
+                # Spurious readiness notifications are possible
+                # at least on Linux -- see man select.
+                return
             if data:
                 bytes_read.append(data)
             else:
-                el.remove_reader(r.fileno())
+                self.assertTrue(el.remove_reader(r.fileno()))
                 r.close()
         el.add_reader(r.fileno(), reader)
         el.call_later(0.05, w.send, b'abc')
@@ -210,14 +189,38 @@ class EventLoopTests(unittest.TestCase):
         r, w = socketpair()
         bytes_read = []
         def reader():
-            data = r.recv(1024)
+            try:
+                data = r.recv(1024)
+            except BlockingIOError:
+                # Spurious readiness notifications are possible
+                # at least on Linux -- see man select.
+                return
             if data:
                 bytes_read.append(data)
             else:
-                el.remove_reader(r.fileno())
+                self.assertTrue(el.remove_reader(r.fileno()))
                 r.close()
         handler = events.Handler(None, reader, ())
         self.assertEqual(el.add_reader(r.fileno(), handler), handler)
+        el.call_later(0.05, w.send, b'abc')
+        el.call_later(0.1, w.send, b'def')
+        el.call_later(0.15, w.close)
+        el.run()
+        self.assertEqual(b''.join(bytes_read), b'abcdef')
+
+    def testReaderCallbackCancel(self):
+        el = events.get_event_loop()
+        r, w = socketpair()
+        bytes_read = []
+        def reader():
+            data = r.recv(1024)
+            if data:
+                bytes_read.append(data)
+            if sum(len(b) for b in bytes_read) >= 6:
+                handler.cancel()
+            if not data:
+                r.close()
+        handler = el.add_reader(r.fileno(), reader)
         el.call_later(0.05, w.send, b'abc')
         el.call_later(0.1, w.send, b'def')
         el.call_later(0.15, w.close)
@@ -229,7 +232,9 @@ class EventLoopTests(unittest.TestCase):
         r, w = socketpair()
         w.setblocking(False)
         el.add_writer(w.fileno(), w.send, b'x'*(256*1024))
-        el.call_later(0.1, el.remove_writer, w.fileno())
+        def remove_writer():
+            self.assertTrue(el.remove_writer(w.fileno()))
+        el.call_later(0.1, remove_writer)
         el.run()
         w.close()
         data = r.recv(256*1024)
@@ -242,12 +247,28 @@ class EventLoopTests(unittest.TestCase):
         w.setblocking(False)
         handler = events.Handler(None, w.send, (b'x'*(256*1024),))
         self.assertEqual(el.add_writer(w.fileno(), handler), handler)
-        el.call_later(0.1, el.remove_writer, w.fileno())
+        def remove_writer():
+            self.assertTrue(el.remove_writer(w.fileno()))
+        el.call_later(0.1, remove_writer)
         el.run()
         w.close()
         data = r.recv(256*1024)
         r.close()
         self.assertTrue(len(data) >= 200)
+
+    def testWriterCallbackCancel(self):
+        el = events.get_event_loop()
+        r, w = socketpair()
+        w.setblocking(False)
+        def sender():
+            w.send(b'x'*256)
+            handler.cancel()
+        handler = el.add_writer(w.fileno(), sender)
+        el.run()
+        w.close()
+        data = r.recv(1024)
+        r.close()
+        self.assertTrue(data == b'x'*256)
 
     def testSockClientOps(self):
         el = events.get_event_loop()
@@ -286,6 +307,7 @@ class EventLoopTests(unittest.TestCase):
         conn.close()
         listener.close()
 
+    @unittest.skipUnless(hasattr(signal, 'SIGKILL'), 'No SIGKILL')
     def testAddSignalHandler(self):
         caught = 0
         def my_handler():
@@ -319,6 +341,7 @@ class EventLoopTests(unittest.TestCase):
         # Removing again returns False.
         self.assertFalse(el.remove_signal_handler(signal.SIGINT))
 
+    @unittest.skipIf(sys.platform == 'win32', 'Unix only')
     def testCancelSignalHandler(self):
         # Cancelling the handler should remove it (eventually).
         caught = 0
@@ -332,6 +355,7 @@ class EventLoopTests(unittest.TestCase):
         el.run_once()
         self.assertEqual(caught, 0)
 
+    @unittest.skipUnless(hasattr(signal, 'SIGALRM'), 'No SIGALRM')
     def testSignalHandlingWhileSelecting(self):
         # Test with a signal actually arriving during a select() call.
         caught = 0
@@ -348,17 +372,18 @@ class EventLoopTests(unittest.TestCase):
     def testCreateTransport(self):
         el = events.get_event_loop()
         # TODO: This depends on xkcd.com behavior!
-        f = el.create_transport(MyProto, 'xkcd.com', 80)
+        f = el.create_connection(MyProto, 'xkcd.com', 80)
         tr, pr = el.run_until_complete(f)
         self.assertTrue(isinstance(tr, transports.Transport))
         self.assertTrue(isinstance(pr, protocols.Protocol))
         el.run()
         self.assertTrue(pr.nbytes > 0)
 
+    @unittest.skipIf(ssl is None, 'No ssl module')
     def testCreateSslTransport(self):
         el = events.get_event_loop()
         # TODO: This depends on xkcd.com behavior!
-        f = el.create_transport(MyProto, 'xkcd.com', 443, ssl=True)
+        f = el.create_connection(MyProto, 'xkcd.com', 443, ssl=True)
         tr, pr = el.run_until_complete(f)
         self.assertTrue(isinstance(tr, transports.Transport))
         self.assertTrue(isinstance(pr, protocols.Protocol))
@@ -373,12 +398,14 @@ class EventLoopTests(unittest.TestCase):
         host, port = sock.getsockname()
         self.assertEqual(host, '0.0.0.0')
         client = socket.socket()
-        client.connect((host, port))
+        client.connect(('127.0.0.1', port))
         client.send(b'xxx')
         el.run_once()  # This is quite mysterious, but necessary.
         el.run_once()
         el.run_once()
         sock.close()
+        # the client socket must be closed after to avoid ECONNRESET upon
+        # recv()/send() on the serving socket
         client.close()
 
 
