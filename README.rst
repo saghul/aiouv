@@ -1,7 +1,7 @@
 
-========================================
-rose: a PEP-3156 experimental event loop
-========================================
+===================================================
+rose: a PEP-3156 compatible experimental event loop
+===================================================
 
 
 Overview
@@ -35,5 +35,5 @@ From the toplevel directory, run:
 
 ::
 
-    nosetests -v -w tests/
+    python runtests.py -v
 
