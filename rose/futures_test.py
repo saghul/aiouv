@@ -1,8 +1,8 @@
 """Tests for futures.py."""
 
-from common import unittest
+import unittest
 
-from rose import futures
+from . import futures
 
 
 def _fakefunc(f):

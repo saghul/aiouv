@@ -1,11 +1,13 @@
 """Tests for http_client.py."""
 
-from common import unittest
+import unittest
 
-from rose import events, http_client, tasks
+from . import events
+from . import http_client
+from . import tasks
 
 
-class StreamReaderTest(unittest.TestCase):
+class StreamReaderTests(unittest.TestCase):
 
     DATA = b'line1\nline2\nline3\n'
 

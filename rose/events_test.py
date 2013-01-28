@@ -15,9 +15,11 @@ import threading
 import time
 import unittest
 
-from common import unittest, socketpair
+from .test_utils import socketpair
 
-from rose import events, transports, protocols
+from . import events
+from . import transports
+from . import protocols
 
 
 class MyProto(protocols.Protocol):

@@ -1,8 +1,10 @@
 """Tests for subprocess_transport.py."""
 
-from common import unittest
+import unittest
 
-from rose import events, protocols, subprocess_transport
+from . import events
+from . import protocols
+from . import subprocess_transport
 
 
 class MyProto(protocols.Protocol):

@@ -1,12 +1,11 @@
 """Tests for tasks.py."""
 
 import time
+import unittest
 
-from common import unittest
-
-from rose import events
-from rose import futures
-from rose import tasks
+from . import events
+from . import futures
+from . import tasks
 
 
 class Dummy:
