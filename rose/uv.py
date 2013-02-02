@@ -486,7 +486,7 @@ class EventLoop(events.EventLoop):
             self._ticker.ref()
             self._ticker.start(lambda x: None)
 
-        return self._loop.run(pyuv.UV_RUN_ONCE)
+        return self._loop.run(pyuv.UV_RUN_ONCE) or bool(self._ready)
 
     def _check_timers(self):
         for timer in [timer for timer in self._timers if timer.handler.cancelled]:
