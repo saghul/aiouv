@@ -1,7 +1,7 @@
 
-===================================================
-rose: a PEP-3156 compatible experimental event loop
-===================================================
+====================================================
+rose: a PEP-3156 compatible event loop based on pyuv
+====================================================
 
 
 Overview
@@ -11,12 +11,7 @@ Overview
 starting with Python 3.3. The reference implementation is codenamed "tulip" and can be found
 `here <https://code.google.com/p/tulip/>`_.
 
-Rose is just a fork of tulip which replaces the use of select, epoll and kqueue selectors
-with `pyuv <https://github.com/saghul/pyuv>`_.
-
-The intention of this project is to experiment with pyuv as a specific event loop implementation.
-Once tulip makes it to the standard library all duplicated code will be removed from this project
-just leaving the event loop itself. The only reason why tulip is "bundled" is for easier experimenting.
+Rose is an event loop implementation for Tulip based on `pyuv <https://github.com/saghul/pyuv>`_.
 
 Rose currently depends on pyuv master branch, you can install it by doing:
 
@@ -32,5 +27,7 @@ From the toplevel directory, run:
 
 ::
 
+    hg clone https://code.google.com/p/tulip/
+    export PYTHONPATH=tulip/
     python runtests.py -v
 
