@@ -18,6 +18,6 @@ class EventLoopPolicy(threading.local, events.EventLoopPolicy):
         self._event_loop = event_loop
 
     def new_event_loop(self):
-        from . import uv
-        return uv.EventLoop()
+        from . import uv_events
+        return uv_events.EventLoop()
 
