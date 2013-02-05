@@ -1,14 +1,33 @@
-"""Tulip 2.0, tracking PEP 3156."""
 
-# This relies on each of the submodules having an __all__ variable.
-from .futures import *
-from .events import *
-from .transports import *
-from .protocols import *
-from .tasks import *
+import threading
+from tulip import events
 
-__all__ = (futures.__all__ +
-           events.__all__ +
-           transports.__all__ +
-           protocols.__all__ +
-           tasks.__all__)
+
+class EventLoopPolicy(threading.local, events.EventLoopPolicy):
+    """In this policy, each thread has its own event loop."""
+
+    _event_loop = None
+
+    def get_event_loop(self):
+        """Get the event loop.
+
+        This may be None or an instance of EventLoop.
+        """
+        if self._event_loop is None:
+            self._event_loop = self.new_event_loop()
+        return self._event_loop
+
+    def set_event_loop(self, event_loop):
+        """Set the event loop."""
+        assert event_loop is None or isinstance(event_loop, events.EventLoop)
+        self._event_loop = event_loop
+
+    def new_event_loop(self):
+        """Create a new event loop.
+
+        You must call set_event_loop() to make this the current event
+        loop.
+        """
+        from . import uv
+        return uv.EventLoop()
+

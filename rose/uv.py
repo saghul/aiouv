@@ -16,10 +16,7 @@ try:
 except ImportError:
     signal = None
 
-from . import events
-from . import futures
-from . import tasks
-from . import transports
+from tulip import events, futures, tasks, transports
 
 
 # Errno values indicating the socket isn't ready for I/O just yet.
