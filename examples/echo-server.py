@@ -1,9 +1,11 @@
 
-import sys
-sys.path.insert(0, '../')
-
 import signal
-from rose import events, protocols
+
+from rose import EventLoopPolicy
+from tulip import events, protocols
+
+events.set_event_loop_policy(EventLoopPolicy())
+
 
 class EchoProtocol(protocols.Protocol):
     def connection_made(self, transport):
@@ -18,8 +20,7 @@ class EchoProtocol(protocols.Protocol):
         print("Client closed connection")
 
 
-reactor = events.new_event_loop()
-events.set_event_loop(reactor)
+reactor = events.get_event_loop()
 
 f = reactor.start_serving(EchoProtocol, '127.0.0.1', 1234)
 server_socket = reactor.run_until_complete(f)
