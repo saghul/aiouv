@@ -23,7 +23,9 @@ import unittest
 
 assert sys.version >= '3.3', 'Please use Python 3.3 or higher.'
 
-TULIP_DIR = os.path.join(os.path.dirname(__file__), 'rose')
+tulip = __import__('tulip')
+TULIP_DIR = tulip.__path__[0]
+del tulip
 
 
 def load_tests(includes=(), excludes=()):
@@ -34,7 +36,7 @@ def load_tests(includes=(), excludes=()):
       test_mods.remove('subprocess_test')
     except ValueError:
       pass
-  tulip = __import__('rose', fromlist=test_mods)
+  tulip = __import__('tulip', fromlist=test_mods)
 
   loader = unittest.TestLoader()
   suite = unittest.TestSuite()
@@ -58,6 +60,11 @@ def load_tests(includes=(), excludes=()):
 
 
 def main():
+  # Set rose as the default policy for running tests
+  import tulip
+  import rose
+  tulip.set_event_loop_policy(rose.EventLoopPolicy())
+
   excludes = []
   includes = []
   patterns = includes  # A reference.
