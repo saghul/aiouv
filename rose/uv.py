@@ -16,7 +16,10 @@ try:
 except ImportError:
     signal = None
 
-from tulip import events, futures, tasks, transports
+from tulip import events
+from tulip import futures
+from tulip import selector_events
+from tulip import tasks
 
 
 # Errno values indicating the socket isn't ready for I/O just yet.
@@ -28,7 +31,15 @@ if sys.platform == 'win32':
 _MAX_WORKERS = 5
 
 
-class EventLoop(events.EventLoop):
+class EventLoop(events.AbstractEventLoop):
+
+    @staticmethod
+    def SocketTransport(event_loop, sock, protocol, waiter=None):
+        return selector_events._SelectorSocketTransport(event_loop, sock, protocol, waiter)
+
+    @staticmethod
+    def SslTransport(event_loop, rawsock, protocol, sslcontext, waiter):
+        return selector_events._SelectorSslTransport(event_loop, rawsock, protocol, sslcontext, waiter)
 
     def __init__(self):
         super().__init__()
@@ -180,73 +191,91 @@ class EventLoop(events.EventLoop):
         return self.run_in_executor(None, socket.getnameinfo, sockaddr, flags)
 
     @tasks.task
-    def create_connection(self, protocol_factory, host, port, *, ssl=False,
-                          family=0, proto=0, flags=0):
-        infos = yield from self.getaddrinfo(host, port,
-                                            family=family,
-                                            type=socket.SOCK_STREAM,
-                                            proto=proto, flags=flags)
-        if not infos:
-            raise socket.error('getaddrinfo() returned empty list')
-        exceptions = []
-        for family, type, proto, cname, address in infos:
-            sock = None
-            try:
-                sock = socket.socket(family=family, type=type, proto=proto)
-                sock.setblocking(False)
-                yield self.sock_connect(sock, address)
-            except socket.error as exc:
-                if sock is not None:
-                    sock.close()
-                exceptions.append(exc)
+    def create_connection(self, protocol_factory, host=None, port=None, *, ssl=False,
+                          family=0, proto=0, flags=0, sock=None):
+        if host is not None or port is not None:
+            if sock is not None:
+                raise ValueError("host, port and sock can not be specified at the same time")
+
+            infos = yield from self.getaddrinfo(
+                host, port, family=family,
+                type=socket.SOCK_STREAM, proto=proto, flags=flags)
+
+            if not infos:
+                raise socket.error('getaddrinfo() returned empty list')
+
+            exceptions = []
+            for family, type, proto, cname, address in infos:
+                sock = None
+                try:
+                    sock = socket.socket(family=family, type=type, proto=proto)
+                    sock.setblocking(False)
+                    yield self.sock_connect(sock, address)
+                except socket.error as exc:
+                    if sock is not None:
+                        sock.close()
+                    exceptions.append(exc)
+                else:
+                    break
             else:
-                break
-        else:
-            if len(exceptions) == 1:
-                raise exceptions[0]
-            else:
-                # If they all have the same str(), raise one.
-                model = str(exceptions[0])
-                if all(str(exc) == model for exc in exceptions):
+                if len(exceptions) == 1:
                     raise exceptions[0]
-                # Raise a combined exception so the user can see all
-                # the various error messages.
-                raise socket.error('Multiple exceptions: {}'.format(
-                    ', '.join(str(exc) for exc in exceptions)))
+                else:
+                    # If they all have the same str(), raise one.
+                    model = str(exceptions[0])
+                    if all(str(exc) == model for exc in exceptions):
+                        raise exceptions[0]
+                    # Raise a combined exception so the user can see all
+                    # the various error messages.
+                    raise socket.error('Multiple exceptions: {}'.format(
+                        ', '.join(str(exc) for exc in exceptions)))
+        elif sock is None:
+            raise ValueError(
+                "host and port was not specified and no sock specified")
+
         protocol = protocol_factory()
         waiter = futures.Future()
         if ssl:
             sslcontext = None if isinstance(ssl, bool) else ssl
-            transport = _SslTransport(self, sock, protocol, sslcontext, waiter)
+            transport = self.SslTransport(self, sock, protocol, sslcontext, waiter)
         else:
-            transport = _SocketTransport(self, sock, protocol, waiter)
+            transport = self.SocketTransport(self, sock, protocol, waiter)
+
         yield from waiter
         return transport, protocol
 
     @tasks.task
-    def start_serving(self, protocol_factory, host, port, *,
-                      family=0, proto=0, flags=0, backlog=100):
-        infos = yield from self.getaddrinfo(host, port,
-                                            family=family,
-                                            type=socket.SOCK_STREAM,
-                                            proto=proto, flags=flags)
-        if not infos:
-            raise socket.error('getaddrinfo() returned empty list')
-        # TODO: Maybe we want to bind every address in the list
-        # instead of the first one that works?
-        exceptions = []
-        for family, type, proto, cname, address in infos:
-            sock = socket.socket(family=family, type=type, proto=proto)
-            try:
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.bind(address)
-            except socket.error as exc:
-                sock.close()
-                exceptions.append(exc)
+    def start_serving(self, protocol_factory, host=None, port=None, *,
+                      family=0, proto=0, flags=0, backlog=100, sock=None):
+        if host is not None or port is not None:
+            if sock is not None:
+                raise ValueError("host, port and sock can not be specified at the same time")
+
+            infos = yield from self.getaddrinfo(
+                host, port, family=family,
+                type=socket.SOCK_STREAM, proto=proto, flags=flags)
+
+            if not infos:
+                raise socket.error('getaddrinfo() returned empty list')
+
+            # TODO: Maybe we want to bind every address in the list
+            # instead of the first one that works?
+            exceptions = []
+            for family, type, proto, cname, address in infos:
+                sock = socket.socket(family=family, type=type, proto=proto)
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    sock.bind(address)
+                except socket.error as exc:
+                    sock.close()
+                    exceptions.append(exc)
+                else:
+                    break
             else:
-                break
-        else:
-            raise exceptions[0]
+                raise exceptions[0]
+        elif sock is None:
+            raise ValueError("host and port was not specified and no sock specified")
+
         sock.listen(backlog)
         sock.setblocking(False)
         self.add_reader(sock.fileno(), self._accept_connection, protocol_factory, sock)
@@ -266,7 +295,7 @@ class EventLoop(events.EventLoop):
             logging.exception('Accept failed')
             return
         protocol = protocol_factory()
-        transport = _SocketTransport(self, conn, protocol)
+        transport = self.SocketTransport(self, conn, protocol)
         # It's now up to the protocol to handle the connection.
 
     # Level-trigered I/O methods.
@@ -614,221 +643,7 @@ class EventLoop(events.EventLoop):
         if sys.platform == 'win32':
             raise RuntimeError('Signals are not really supported on Windows')
 
-
-# Transports
-
-class _SocketTransport(transports.Transport):
-
-    def __init__(self, event_loop, sock, protocol, waiter=None):
-        self._event_loop = event_loop
-        self._sock = sock
-        self._protocol = protocol
-        self._buffer = []
-        self._closing = False  # Set when close() called.
-        self._event_loop.add_reader(self._sock.fileno(), self._read_ready)
-        self._event_loop.call_soon(self._protocol.connection_made, self)
-        if waiter is not None:
-            self._event_loop.call_soon(waiter.set_result, None)
-
-    def _read_ready(self):
-        try:
-            data = self._sock.recv(16*1024)
-        except socket.error as exc:
-            if exc.errno not in _TRYAGAIN:
-                self._fatal_error(exc)
-        else:
-            if data:
-                self._event_loop.call_soon(self._protocol.data_received, data)
-            else:
-                self._event_loop.remove_reader(self._sock.fileno())
-                self._event_loop.call_soon(self._protocol.eof_received)
-
-    def write(self, data):
-        assert isinstance(data, bytes)
-        assert not self._closing
-        if not data:
-            return
-        if not self._buffer:
-            # Attempt to send it right away first.
-            try:
-                n = self._sock.send(data)
-            except socket.error as exc:
-                if exc.errno in _TRYAGAIN:
-                    n = 0
-                else:
-                    self._fatal_error(exc)
-                    return
-            if n == len(data):
-                return
-            if n:
-                data = data[n:]
-            self._event_loop.add_writer(self._sock.fileno(), self._write_ready)
-        self._buffer.append(data)
-
-    def _write_ready(self):
-        data = b''.join(self._buffer)
-        self._buffer = []
-        try:
-            if data:
-                n = self._sock.send(data)
-            else:
-                n = 0
-        except socket.error as exc:
-            if exc.errno in _TRYAGAIN:
-                n = 0
-            else:
-                self._fatal_error(exc)
-                return
-        if n == len(data):
-            self._event_loop.remove_writer(self._sock.fileno())
-            if self._closing:
-                self._event_loop.call_soon(self._call_connection_lost, None)
-            return
-        if n:
-            data = data[n:]
-        self._buffer.append(data)  # Try again later.
-
-    # TODO: write_eof(), can_write_eof().
-
-    def abort(self):
-        self._fatal_error(None)
-
-    def close(self):
-        self._closing = True
-        self._event_loop.remove_reader(self._sock.fileno())
-        if not self._buffer:
-            self._event_loop.call_soon(self._call_connection_lost, None)
-
-    def _fatal_error(self, exc):
-        logging.exception('Fatal error for %s', self)
-        self._event_loop.remove_writer(self._sock.fileno())
-        self._event_loop.remove_reader(self._sock.fileno())
-        self._buffer = []
-        self._event_loop.call_soon(self._call_connection_lost, exc)
-
-    def _call_connection_lost(self, exc):
-        try:
-            self._protocol.connection_lost(exc)
-        finally:
-            self._sock.close()
-
-
-class _SslTransport(transports.Transport):
-
-    def __init__(self, event_loop, rawsock, protocol, sslcontext, waiter):
-        self._event_loop = event_loop
-        self._rawsock = rawsock
-        self._protocol = protocol
-        sslcontext = sslcontext or ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-        self._sslcontext = sslcontext
-        self._waiter = waiter
-        sslsock = sslcontext.wrap_socket(rawsock, do_handshake_on_connect=False)
-        self._sslsock = sslsock
-        self._buffer = []
-        self._closing = False  # Set when close() called.
-        self._on_handshake()
-
-    def _on_handshake(self):
-        fd = self._sslsock.fileno()
-        try:
-            self._sslsock.do_handshake()
-        except ssl.SSLWantReadError:
-            self._event_loop.add_reader(fd, self._on_handshake)
-            return
-        except ssl.SSLWantWriteError:
-            self._event_loop.add_writable(fd, self._on_handshake)
-            return
-        except Exception as exc:
-            self._sslsock.close()
-            self._waiter.set_exception(exc)
-            return
-        except BaseException as exc:
-            self._sslsock.close()
-            self._waiter.set_exception(exc)
-            raise
-        self._event_loop.remove_reader(fd)
-        self._event_loop.remove_writer(fd)
-        self._event_loop.add_reader(fd, self._on_ready)
-        self._event_loop.add_writer(fd, self._on_ready)
-        self._event_loop.call_soon(self._protocol.connection_made, self)
-        self._waiter.set_result(None)
-
-    def _on_ready(self):
-        # Because of renegotiations (?), there's no difference between
-        # readable and writable.  We just try both.  XXX This may be
-        # incorrect; we probably need to keep state about what we
-        # should do next.
-
-        # Maybe we're already closed...
-        fd = self._sslsock.fileno()
-        if fd < 0:
-            return
-
-        # First try reading.
-        try:
-            data = self._sslsock.recv(8192)
-        except ssl.SSLWantReadError:
-            pass
-        except ssl.SSLWantWriteError:
-            pass
-        except socket.error as exc:
-            if exc.errno not in _TRYAGAIN:
-                self._fatal_error(exc)
-                return
-        else:
-            if data:
-                self._protocol.data_received(data)
-            else:
-                # TODO: Don't close when self._buffer is non-empty.
-                assert not self._buffer
-                self._event_loop.remove_reader(fd)
-                self._event_loop.remove_writer(fd)
-                self._sslsock.close()
-                self._protocol.connection_lost(None)
-                return
-
-        # Now try writing, if there's anything to write.
-        if not self._buffer:
-            return
-
-        data = b''.join(self._buffer)
-        self._buffer = []
-        try:
-            n = self._sslsock.send(data)
-        except ssl.SSLWantReadError:
-            pass
-        except ssl.SSLWantWriteError:
-            pass
-        except socket.error as exc:
-            if exc.errno not in _TRYAGAIN:
-                self._fatal_error(exc)
-                return
-        else:
-            if n < len(data):
-                self._buffer.append(data[n:])
-
-    def write(self, data):
-        assert isinstance(data, bytes)
-        assert not self._closing
-        if not data:
-            return
-        self._buffer.append(data)
-        # We could optimize, but the callback can do this for now.
-
-    # TODO: write_eof(), can_write_eof().
-
-    def abort(self):
-        self._fatal_error(None)
-
-    def close(self):
-        self._closing = True
-        self._event_loop.remove_reader(self._sslsock.fileno())
-        if not self._buffer:
-            self._event_loop.call_soon(self._protocol.connection_lost, None)
-
-    def _fatal_error(self, exc):
-        logging.exception('Fatal error for %s', self)
-        self._event_loop.remove_writer(self._sslsock.fileno())
-        self._event_loop.remove_reader(self._sslsock.fileno())
-        self._buffer = []
+    def _socketpair(self):
+        # TODO: remove this, it's just here for the test suite
+        return socket.socketpair()
 

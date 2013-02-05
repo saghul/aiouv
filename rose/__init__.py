@@ -14,7 +14,7 @@ class EventLoopPolicy(threading.local, events.EventLoopPolicy):
         return self._event_loop
 
     def set_event_loop(self, event_loop):
-        assert event_loop is None or isinstance(event_loop, events.EventLoop)
+        assert event_loop is None or isinstance(event_loop, events.AbstractEventLoop)
         self._event_loop = event_loop
 
     def new_event_loop(self):
