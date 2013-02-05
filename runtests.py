@@ -27,36 +27,45 @@ tulip = __import__('tulip')
 TULIP_DIR = tulip.__path__[0]
 del tulip
 
+ROSE_DIR = os.path.join(os.path.dirname(__file__), 'rose')
+
+
+def load_test_modules(loader, suite, includes, excludes, base_module, test_modules):
+    for mod in [getattr(base_module, name) for name in test_modules]:
+        for name in set(dir(mod)):
+            if name.endswith('Tests'):
+                test_module = getattr(mod, name)
+                tests = loader.loadTestsFromTestCase(test_module)
+                if includes:
+                    tests = [test
+                            for test in tests
+                            if any(re.search(pat, test.id()) for pat in includes)]
+                if excludes:
+                    tests = [test
+                            for test in tests
+                            if not any(re.search(pat, test.id()) for pat in excludes)]
+                suite.addTests(tests)
+
 
 def load_tests(includes=(), excludes=()):
-  test_mods = [f[:-3] for f in os.listdir(TULIP_DIR) if f.endswith('_test.py')]
+    tulip_test_mods = [f[:-3] for f in os.listdir(TULIP_DIR) if f.endswith('_test.py')]
+    rose_test_mods = [f[:-3] for f in os.listdir(ROSE_DIR) if f.endswith('_test.py')]
 
-  if sys.platform == 'win32':
-    try:
-      test_mods.remove('subprocess_test')
-    except ValueError:
-      pass
-  tulip = __import__('tulip', fromlist=test_mods)
+    if sys.platform == 'win32':
+        try:
+            tulip_test_mods.remove('subprocess_test')
+        except ValueError:
+            pass
+    tulip = __import__('tulip', fromlist=tulip_test_mods)
+    rose = __import__('rose', fromlist=rose_test_mods)
 
-  loader = unittest.TestLoader()
-  suite = unittest.TestSuite()
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
 
-  for mod in [getattr(tulip, name) for name in test_mods]:
-    for name in set(dir(mod)):
-      if name.endswith('Tests'):
-        test_module = getattr(mod, name)
-        tests = loader.loadTestsFromTestCase(test_module)
-        if includes:
-          tests = [test
-                   for test in tests
-                   if any(re.search(pat, test.id()) for pat in includes)]
-        if excludes:
-          tests = [test
-                   for test in tests
-                   if not any(re.search(pat, test.id()) for pat in excludes)]
-        suite.addTests(tests)
+    load_test_modules(loader, suite, includes, excludes, tulip, tulip_test_mods)
+    load_test_modules(loader, suite, includes, excludes, rose, rose_test_mods)
 
-  return suite
+    return suite
 
 
 def main():
