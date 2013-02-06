@@ -89,7 +89,7 @@ class EventLoop(events.AbstractEventLoop):
         if timeout is None:
             timeout = 0x7fffffff/1000.0  # 24 days
         future.add_done_callback(lambda _: self.stop())
-        handler = self.call_later(timeout, lambda _: self.stop())
+        handler = self.call_later(timeout, self.stop)
         self.run()
         handler.cancel()
         if future.done():
