@@ -126,7 +126,7 @@ class EventLoop(events.AbstractEventLoop):
     def call_later(self, delay, callback, *args):
         if delay <= 0:
             return self.call_soon(callback, *args)
-        handler = events.make_handler(None, callback, args)
+        handler = events.make_handler(callback, args)
         timer = pyuv.Timer(self._loop)
         timer.handler = handler
         timer.start(self._timer_cb, delay, 0)
@@ -136,7 +136,7 @@ class EventLoop(events.AbstractEventLoop):
     def call_repeatedly(self, interval, callback, *args):  # NEW!
         if interval <= 0:
             raise ValueError('invalid interval specified: {}'.format(interval))
-        handler = events.make_handler(None, callback, args)
+        handler = events.make_handler(callback, args)
         timer = pyuv.Timer(self._loop)
         timer.handler = handler
         timer.start(self._timer_cb, interval, interval)
@@ -144,7 +144,7 @@ class EventLoop(events.AbstractEventLoop):
         return handler
 
     def call_soon(self, callback, *args):
-        handler = events.make_handler(None, callback, args)
+        handler = events.make_handler(callback, args)
         self._ready.append(handler)
         return handler
 
@@ -165,7 +165,7 @@ class EventLoop(events.AbstractEventLoop):
     def run_in_executor(self, executor, callback, *args):
         if isinstance(callback, events.Handler):
             assert not args
-            assert callback.when is None
+            assert not isinstance(callback, events.Timer)
             if callback.cancelled:
                 f = futures.Future()
                 f.set_result(None)
@@ -304,7 +304,7 @@ class EventLoop(events.AbstractEventLoop):
     # False if there was nothing to delete.
 
     def add_reader(self, fd, callback, *args):
-        handler = events.make_handler(None, callback, args)
+        handler = events.make_handler(callback, args)
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
@@ -336,7 +336,7 @@ class EventLoop(events.AbstractEventLoop):
             return True
 
     def add_writer(self, fd, callback, *args):
-        handler = events.make_handler(None, callback, args)
+        handler = events.make_handler(callback, args)
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
@@ -480,7 +480,7 @@ class EventLoop(events.AbstractEventLoop):
     def add_signal_handler(self, sig, callback, *args):
         self._validate_signal(sig)
         signal_h = pyuv.Signal(self._loop)
-        handler = events.make_handler(None, callback, args)
+        handler = events.make_handler(callback, args)
         signal_h.handler = handler
         try:
             signal_h.start(self._signal_cb, sig)
