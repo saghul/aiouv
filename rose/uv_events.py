@@ -1,6 +1,5 @@
 
 import collections
-import concurrent.futures
 import errno
 import logging
 import pyuv
@@ -16,10 +15,10 @@ try:
 except ImportError:
     signal = None
 
+from tulip import base_events
 from tulip import events
 from tulip import futures
 from tulip import selector_events
-from tulip import tasks
 
 
 # Errno values indicating the socket isn't ready for I/O just yet.
@@ -31,7 +30,7 @@ if sys.platform == 'win32':
 _MAX_WORKERS = 5
 
 
-class EventLoop(events.AbstractEventLoop):
+class EventLoop(base_events.BaseEventLoop):
 
     @staticmethod
     def SocketTransport(event_loop, sock, protocol, waiter=None):
@@ -70,12 +69,7 @@ class EventLoop(events.AbstractEventLoop):
         while not self._stop and self._run_once():
             pass
 
-    def run_forever(self):
-        handler = self.call_repeatedly(24*3600, lambda: None)
-        try:
-            self.run()
-        finally:
-            handler.cancel()
+    # run_forever - inherited from BaseEventLoop
 
     def run_once(self, timeout=None):
         if timeout is not None:
@@ -143,10 +137,7 @@ class EventLoop(events.AbstractEventLoop):
         self._timers.append(timer)
         return handler
 
-    def call_soon(self, callback, *args):
-        handler = events.make_handler(callback, args)
-        self._ready.append(handler)
-        return handler
+    # call_soon - inherited from BaseEventLoop
 
     def call_soon_threadsafe(self, callback, *args):
         handler = self.call_soon(callback, *args)
@@ -155,131 +146,20 @@ class EventLoop(events.AbstractEventLoop):
 
     # Methods returning Futures for interacting with threads.
 
-    def wrap_future(self, future):
-        if isinstance(future, futures.Future):
-            return future  # Don't wrap our own type of Future.
-        new_future = futures.Future()
-        future.add_done_callback(lambda f: self.call_soon_threadsafe(new_future._copy_state, f))
-        return new_future
-
-    def run_in_executor(self, executor, callback, *args):
-        if isinstance(callback, events.Handler):
-            assert not args
-            assert not isinstance(callback, events.Timer)
-            if callback.cancelled:
-                f = futures.Future()
-                f.set_result(None)
-                return f
-            callback, args = callback.callback, callback.args
-        if executor is None:
-            executor = self._default_executor
-            if executor is None:
-                executor = concurrent.futures.ThreadPoolExecutor(_MAX_WORKERS)
-                self._default_executor = executor
-        return self.wrap_future(executor.submit(callback, *args))
-
-    def set_default_executor(self, executor):
-        self._default_executor = executor
+    # wrap_future - inherited from BaseEventLoop
+    # run_in_executor - inherited from BaseEventLoop
+    # set_default_executor - inherited from BaseEventLoop
 
     # Network I/O methods returning Futures.
 
-    def getaddrinfo(self, host, port, *, family=0, type=0, proto=0, flags=0):
-        return self.run_in_executor(None, socket.getaddrinfo,
-                                    host, port, family, type, proto, flags)
+    # getaddrinfo - inherited from BaseEventLoop
+    # getnameinfo - inherited from BaseEventLoop
+    # create_connection - inherited from BaseEventLoop
+    # start_serving - inherited from BaseEventLoop
 
-    def getnameinfo(self, sockaddr, flags=0):
-        return self.run_in_executor(None, socket.getnameinfo, sockaddr, flags)
-
-    @tasks.task
-    def create_connection(self, protocol_factory, host=None, port=None, *, ssl=False,
-                          family=0, proto=0, flags=0, sock=None):
-        if host is not None or port is not None:
-            if sock is not None:
-                raise ValueError("host, port and sock can not be specified at the same time")
-
-            infos = yield from self.getaddrinfo(
-                host, port, family=family,
-                type=socket.SOCK_STREAM, proto=proto, flags=flags)
-
-            if not infos:
-                raise socket.error('getaddrinfo() returned empty list')
-
-            exceptions = []
-            for family, type, proto, cname, address in infos:
-                sock = None
-                try:
-                    sock = socket.socket(family=family, type=type, proto=proto)
-                    sock.setblocking(False)
-                    yield self.sock_connect(sock, address)
-                except socket.error as exc:
-                    if sock is not None:
-                        sock.close()
-                    exceptions.append(exc)
-                else:
-                    break
-            else:
-                if len(exceptions) == 1:
-                    raise exceptions[0]
-                else:
-                    # If they all have the same str(), raise one.
-                    model = str(exceptions[0])
-                    if all(str(exc) == model for exc in exceptions):
-                        raise exceptions[0]
-                    # Raise a combined exception so the user can see all
-                    # the various error messages.
-                    raise socket.error('Multiple exceptions: {}'.format(
-                        ', '.join(str(exc) for exc in exceptions)))
-        elif sock is None:
-            raise ValueError(
-                "host and port was not specified and no sock specified")
-
-        protocol = protocol_factory()
-        waiter = futures.Future()
-        if ssl:
-            sslcontext = None if isinstance(ssl, bool) else ssl
-            transport = self.SslTransport(self, sock, protocol, sslcontext, waiter)
-        else:
-            transport = self.SocketTransport(self, sock, protocol, waiter)
-
-        yield from waiter
-        return transport, protocol
-
-    @tasks.task
-    def start_serving(self, protocol_factory, host=None, port=None, *,
-                      family=0, proto=0, flags=0, backlog=100, sock=None):
-        if host is not None or port is not None:
-            if sock is not None:
-                raise ValueError("host, port and sock can not be specified at the same time")
-
-            infos = yield from self.getaddrinfo(
-                host, port, family=family,
-                type=socket.SOCK_STREAM, proto=proto, flags=flags)
-
-            if not infos:
-                raise socket.error('getaddrinfo() returned empty list')
-
-            # TODO: Maybe we want to bind every address in the list
-            # instead of the first one that works?
-            exceptions = []
-            for family, type, proto, cname, address in infos:
-                sock = socket.socket(family=family, type=type, proto=proto)
-                try:
-                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    sock.bind(address)
-                except socket.error as exc:
-                    sock.close()
-                    exceptions.append(exc)
-                else:
-                    break
-            else:
-                raise exceptions[0]
-        elif sock is None:
-            raise ValueError("host and port was not specified and no sock specified")
-
-        sock.listen(backlog)
-        sock.setblocking(False)
+    def _start_serving(self, protocol_factory, sock):
+        # Needed by BaseEventLoop.start_serving
         self.add_reader(sock.fileno(), self._accept_connection, protocol_factory, sock)
-        return sock
 
     def _accept_connection(self, protocol_factory, sock):
         try:
