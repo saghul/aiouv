@@ -55,3 +55,12 @@ KeyboardInterrupt. This is due to how libuv handles signals. More info and a
 possible solution here: https://github.com/saghul/pyuv/commit/3b43285bc66883c4466cb4413de80842dce98621
 and here: https://github.com/saghul/pyuv/commit/6e71bf7da350c6ced6bdc4375ed6ba8cd2a9d2f2
 
+Callback execution
+==================
+
+Currently rose runs all callbacks in a Check handle, which happens after i/o has been performed.
+All operations will queue the handles in the _ready queue and the aforementioned Check handle will
+execute them. This is slightly different than what Tulip does, because if BaseException is raised
+in a callback it will be propagated to the function caller, whereas in rose the default excepthook
+is executed.
+
