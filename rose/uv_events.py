@@ -45,6 +45,7 @@ class EventLoop(base_events.BaseEventLoop):
         self._loop = pyuv.Loop()
         self._stop = False
         self._default_executor = None
+        self._last_exc = None
 
         self._fd_map = {}
         self._signal_handlers = {}
@@ -392,7 +393,11 @@ class EventLoop(base_events.BaseEventLoop):
             self._ticker.ref()
             self._ticker.start(lambda x: None)
 
-        return self._loop.run(pyuv.UV_RUN_ONCE) or bool(self._ready)
+        r = self._loop.run(pyuv.UV_RUN_ONCE)
+        if self._last_exc is not None:
+            exc, self._last_exc = self._last_exc, None
+            raise exc[1]
+        return r or bool(self._ready)
 
     def _check_timers(self):
         for timer in [timer for timer in self._timers if timer.handler.cancelled]:
@@ -480,6 +485,9 @@ class EventLoop(base_events.BaseEventLoop):
                     handler.callback(*handler.args)
                 except Exception:
                     logging.exception('Exception in callback %s %r', handler.callback, handler.args)
+                except BaseException:
+                    self._last_exc = sys.exc_info()
+                    break
 
     def _create_poll_handle(self, fdobj):
         fd = self._fileobj_to_fd(fdobj)
