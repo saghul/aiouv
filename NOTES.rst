@@ -62,5 +62,7 @@ Currently rose runs all callbacks in a Check handle, which happens after i/o has
 All operations will queue the handles in the _ready queue and the aforementioned Check handle will
 execute them. This is slightly different than what Tulip does, because if BaseException is raised
 in a callback it will be propagated to the function caller, whereas in rose the default excepthook
-is executed.
+is executed. UPDATE: this is fixed now. If any of the handlers raises BaseException sys.exc_info()
+will be saved in _last_exc and the processing will not continue, then, if _last_exc is not None it
+will be raised.
 
