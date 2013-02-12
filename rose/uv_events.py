@@ -81,16 +81,21 @@ class EventLoop(base_events.BaseEventLoop):
             timer.close()
 
     def run_until_complete(self, future, timeout=None):
-        if timeout is None:
-            timeout = 0x7fffffff/1000.0  # 24 days
+        handler_called = False
+        def stop_loop():
+            nonlocal handler_called
+            handler_called = True
+            self.stop()
         future.add_done_callback(lambda _: self.stop())
-        handler = self.call_later(timeout, self.stop)
-        self.run()
-        handler.cancel()
-        if future.done():
-            return future.result()  # May raise future.exception().
+        if timeout is None:
+            self.run_forever()
         else:
+            handler = self.call_later(timeout, self.stop)
+            self.run()
+            handler.cancel()
+        if handler_called:
             raise futures.TimeoutError
+        return future.result()
 
     def stop(self):
         self._stop = True
