@@ -55,9 +55,6 @@ class EventLoop(base_events.BaseEventLoop):
         self._waker = pyuv.Async(self._loop, lambda h: None)
         self._waker.unref()
 
-        self._ticker = pyuv.Idle(self._loop)
-        self._ticker.unref()
-
         self._stop_h = pyuv.Idle(self._loop)
         self._stop_h.unref()
 
@@ -109,7 +106,6 @@ class EventLoop(base_events.BaseEventLoop):
         self._timers.clear()
 
         self._waker.close()
-        self._ticker.close()
         self._stop_h.close()
         self._ready_processor.close()
 
@@ -395,10 +391,12 @@ class EventLoop(base_events.BaseEventLoop):
 
         # If there is something ready to be run, prevent the loop from blocking for i/o
         if self._ready:
-            self._ticker.ref()
-            self._ticker.start(lambda x: None)
+            self._ready_processor.ref()
+            mode = pyuv.UV_RUN_NOWAIT
+        else:
+            mode = pyuv.UV_RUN_ONCE
 
-        r = self._loop.run(pyuv.UV_RUN_ONCE)
+        r = self._loop.run(mode)
         if self._last_exc is not None:
             exc, self._last_exc = self._last_exc, None
             raise exc[1]
@@ -472,10 +470,9 @@ class EventLoop(base_events.BaseEventLoop):
             poll_h.start(poll_h.pevents, self._poll_cb)
 
     def _process_ready(self, handle):
-        # Stop the ticker in case it was active
-        if self._ticker.active:
-            self._ticker.stop()
-            self._ticker.unref()
+        # Always unref the ready processor, it will only be ref'd in case
+        # there are callbacks in the _ready queue
+        self._ready_processor.unref()
         # This is the only place where callbacks are actually *called*.
         # All other places just add them to ready.
         # Note: We run all currently scheduled callbacks, but not any
