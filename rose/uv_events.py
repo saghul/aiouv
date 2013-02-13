@@ -420,17 +420,18 @@ class EventLoop(base_events.BaseEventLoop):
         self._ready.append(signal_h.handler)
 
     def _poll_cb(self, poll_h, events, error):
+        fd = poll_h.fileno()
         if error is not None:
             # An error happened, signal both readability and writability and
             # let the error propagate
             if poll_h.read_handler is not None:
                 if poll_h.read_handler.cancelled:
-                    self.remove_reader(poll_h.fd)
+                    self.remove_reader(fd)
                 else:
                     self._ready.append(poll_h.read_handler)
             if poll_h.write_handler is not None:
                 if poll_h.write_handler.cancelled:
-                    self.remove_writer(poll_h.fd)
+                    self.remove_writer(fd)
                 else:
                     self._ready.append(poll_h.write_handler)
             return
@@ -441,7 +442,7 @@ class EventLoop(base_events.BaseEventLoop):
         if events & pyuv.UV_READABLE:
             if poll_h.read_handler is not None:
                 if poll_h.read_handler.cancelled:
-                    self.remove_reader(poll_h.fd)
+                    self.remove_reader(fd)
                     modified = True
                 else:
                     self._ready.append(poll_h.read_handler)
@@ -450,7 +451,7 @@ class EventLoop(base_events.BaseEventLoop):
         if events & pyuv.UV_WRITABLE:
             if poll_h.write_handler is not None:
                 if poll_h.write_handler.cancelled:
-                    self.remove_writer(poll_h.fd)
+                    self.remove_writer(fd)
                     modified = True
                 else:
                     self._ready.append(poll_h.write_handler)
@@ -485,9 +486,7 @@ class EventLoop(base_events.BaseEventLoop):
                     break
 
     def _create_poll_handle(self, fdobj):
-        fd = self._fileobj_to_fd(fdobj)
-        poll_h = pyuv.Poll(self._loop, fd)
-        poll_h.fd = fd
+        poll_h = pyuv.Poll(self._loop, self._fileobj_to_fd(fdobj))
         poll_h.pevents = 0
         poll_h.read_handler = None
         poll_h.write_handler = None
