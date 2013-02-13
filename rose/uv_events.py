@@ -47,9 +47,6 @@ class EventLoop(base_events.BaseEventLoop):
         self._waker = pyuv.Async(self._loop, lambda h: None)
         self._waker.unref()
 
-        self._stop_h = pyuv.Idle(self._loop)
-        self._stop_h.unref()
-
         self._ready_processor = pyuv.Check(self._loop)
         self._ready_processor.start(self._process_ready)
         self._ready_processor.unref()
@@ -88,8 +85,7 @@ class EventLoop(base_events.BaseEventLoop):
 
     def stop(self):
         self._stop = True
-        if not self._stop_h.active:
-            self._stop_h.start(lambda h: h.stop())
+        self._waker.send()
 
     def close(self):
         self._fd_map.clear()
@@ -98,7 +94,6 @@ class EventLoop(base_events.BaseEventLoop):
         self._timers.clear()
 
         self._waker.close()
-        self._stop_h.close()
         self._ready_processor.close()
 
         def cb(handle):
