@@ -63,6 +63,9 @@ def load_tests(includes=(), excludes=()):
     load_test_modules(loader, suite, includes, excludes, tulip, tulip_test_mods)
     load_test_modules(loader, suite, includes, excludes, rose, rose_test_mods)
 
+    del tulip
+    del rose
+
     return suite
 
 
@@ -95,6 +98,10 @@ def main():
     logger.setLevel(logging.INFO)
   elif v >= 4:
     logger.setLevel(logging.DEBUG)
+
+  import tulip
+  import rose
+  tulip.set_event_loop_policy(rose.EventLoopPolicy())
 
   result = unittest.TextTestRunner(verbosity=v).run(tests)
   sys.exit(not result.wasSuccessful())
