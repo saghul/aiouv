@@ -79,7 +79,7 @@ class EventLoop(base_events.BaseEventLoop):
         if timeout is None:
             self.run_forever()
         else:
-            handler = self.call_later(timeout, self.stop)
+            handler = self.call_later(timeout, stop_loop)
             self.run()
             handler.cancel()
         if handler_called:
