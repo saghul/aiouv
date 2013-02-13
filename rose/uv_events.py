@@ -164,7 +164,7 @@ class EventLoop(base_events.BaseEventLoop):
             logging.exception('Accept failed')
             return
         protocol = protocol_factory()
-        transport = self._make_socket_transport(self, conn, protocol)
+        transport = self._make_socket_transport(conn, protocol)
         # It's now up to the protocol to handle the connection.
 
     # Level-trigered I/O methods.
@@ -372,11 +372,11 @@ class EventLoop(base_events.BaseEventLoop):
 
     # Private / internal methods
 
-    def _make_socket_transport(self, event_loop, sock, protocol, waiter=None):
-        return selector_events._SelectorSocketTransport(event_loop, sock, protocol, waiter)
+    def _make_socket_transport(self, sock, protocol, waiter=None):
+        return selector_events._SelectorSocketTransport(self, sock, protocol, waiter)
 
-    def _make_ssl_transport(self, event_loop, rawsock, protocol, sslcontext, waiter):
-        return selector_events._SelectorSslTransport(event_loop, rawsock, protocol, sslcontext, waiter)
+    def _make_ssl_transport(self, rawsock, protocol, sslcontext, waiter):
+        return selector_events._SelectorSslTransport(self, rawsock, protocol, sslcontext, waiter)
 
     def _run_once(self):
         # Check if there are cancelled timers, if so close the handles
