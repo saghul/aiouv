@@ -49,7 +49,6 @@ class EventLoop(base_events.BaseEventLoop):
 
         self._ready_processor = pyuv.Check(self._loop)
         self._ready_processor.start(self._process_ready)
-        self._ready_processor.unref()
 
     def run(self):
         self._stop = False
