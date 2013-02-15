@@ -387,13 +387,14 @@ class EventLoop(base_events.BaseEventLoop):
             self._ready_processor.ref()
             mode = pyuv.UV_RUN_NOWAIT
         else:
+            self._ready_processor.unref()
             mode = pyuv.UV_RUN_ONCE
 
         r = self._loop.run(mode)
         if self._last_exc is not None:
             exc, self._last_exc = self._last_exc, None
             raise exc[1]
-        return r or bool(self._ready)
+        return r
 
     def _check_timers(self):
         for timer in [timer for timer in self._timers if timer.handler.cancelled]:
@@ -464,9 +465,6 @@ class EventLoop(base_events.BaseEventLoop):
             poll_h.start(poll_h.pevents, self._poll_cb)
 
     def _process_ready(self, handle):
-        # Always unref the ready processor, it will only be ref'd in case
-        # there are callbacks in the _ready queue
-        self._ready_processor.unref()
         # This is the only place where callbacks are actually *called*.
         # All other places just add them to ready.
         # Note: We run all currently scheduled callbacks, but not any
@@ -484,6 +482,10 @@ class EventLoop(base_events.BaseEventLoop):
                 except BaseException:
                     self._last_exc = sys.exc_info()
                     break
+        if not self._ready:
+            self._ready_processor.unref()
+        else:
+            self._ready_processor.ref()
 
     def _create_poll_handle(self, fdobj):
         poll_h = pyuv.Poll(self._loop, self._fileobj_to_fd(fdobj))
