@@ -379,7 +379,10 @@ class EventLoop(base_events.BaseEventLoop):
 
     def _run_once(self):
         # Check if there are cancelled timers, if so close the handles
-        self._check_timers()
+        for timer in [timer for timer in self._timers if timer.handler.cancelled]:
+            timer.close()
+            self._timers.remove(timer)
+            del timer.handler
 
         # If there is something ready to be run, prevent the loop from blocking for i/o
         if self._ready:
@@ -394,12 +397,6 @@ class EventLoop(base_events.BaseEventLoop):
             exc, self._last_exc = self._last_exc, None
             raise exc[1]
         return r
-
-    def _check_timers(self):
-        for timer in [timer for timer in self._timers if timer.handler.cancelled]:
-            del timer.handler
-            timer.close()
-            self._timers.remove(timer)
 
     def _timer_cb(self, timer):
         if timer.handler.cancelled:
