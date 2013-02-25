@@ -20,16 +20,26 @@ import os
 import re
 import sys
 import unittest
+import importlib.machinery
 
 assert sys.version >= '3.3', 'Please use Python 3.3 or higher.'
 
 
-TULIP_DIR = __import__('tulip').__path__[0]
-ROSE_DIR = os.path.join(os.path.dirname(__file__), 'rose')
+TULIP_DIR = os.path.join(os.path.dirname(__file__), 'tulip', 'tests')
+ROSE_DIR = os.path.join(os.path.dirname(__file__), 'tests')
 
 
-def load_test_modules(loader, suite, includes, excludes, base_module, test_modules):
-    for mod in [getattr(base_module, name) for name in test_modules]:
+def load_test_modules(loader, suite, includes, excludes, base_dir):
+    test_mods = [(f[:-3], f) for f in os.listdir(base_dir) if f.endswith('_test.py')]
+    mods = []
+    for mod, sourcefile in test_mods:
+        try:
+            loader_ = importlib.machinery.SourceFileLoader(mod, os.path.join(base_dir, sourcefile))
+            mods.append(loader_.load_module())
+        except ImportError:
+            pass
+
+    for mod in mods:
         for name in set(dir(mod)):
             if name.endswith('Tests'):
                 test_module = getattr(mod, name)
@@ -46,25 +56,11 @@ def load_test_modules(loader, suite, includes, excludes, base_module, test_modul
 
 
 def load_tests(includes=(), excludes=()):
-    tulip_test_mods = [f[:-3] for f in os.listdir(TULIP_DIR) if f.endswith('_test.py')]
-    rose_test_mods = [f[:-3] for f in os.listdir(ROSE_DIR) if f.endswith('_test.py')]
-
-    if sys.platform == 'win32':
-        try:
-            tulip_test_mods.remove('subprocess_test')
-        except ValueError:
-            pass
-    tulip = __import__('tulip', fromlist=tulip_test_mods)
-    rose = __import__('rose', fromlist=rose_test_mods)
-
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
 
-    load_test_modules(loader, suite, includes, excludes, tulip, tulip_test_mods)
-    load_test_modules(loader, suite, includes, excludes, rose, rose_test_mods)
-
-    del tulip
-    del rose
+    load_test_modules(loader, suite, includes, excludes, TULIP_DIR)
+    load_test_modules(loader, suite, includes, excludes, ROSE_DIR)
 
     return suite
 
