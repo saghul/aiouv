@@ -108,13 +108,11 @@ class EventLoop(base_events.BaseEventLoop):
         self._ready.clear()
         self._timers.clear()
 
-        self._waker.close()
-        self._ready_processor.close()
-
         def cb(handle):
             if not handle.closed:
                 handle.close()
         self._loop.walk(cb)
+
         # Run a loop iteration so that close callbacks are called and resources are freed
         assert not self._loop.run(pyuv.UV_RUN_NOWAIT)
         self._loop = None
