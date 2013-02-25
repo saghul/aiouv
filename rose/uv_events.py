@@ -30,12 +30,24 @@ if sys.platform == 'win32':
 _MAX_WORKERS = 5
 
 
+class Timer(events.Handler):
+
+    def __init__(self, callback, args, timer):
+        super().__init__(callback, args)
+        self._timer = timer
+
+    def cancel(self):
+        super().cancel()
+        if not self._timer.closed:
+            self._timer.stop()
+        self._timer = None
+
+
 class EventLoop(base_events.BaseEventLoop):
 
     def __init__(self):
         super().__init__()
         self._loop = pyuv.Loop()
-        self._stop = False
         self._default_executor = None
         self._last_exc = None
 
@@ -49,11 +61,13 @@ class EventLoop(base_events.BaseEventLoop):
 
         self._ready_processor = pyuv.Check(self._loop)
         self._ready_processor.start(self._process_ready)
+        self._ready_processor.unref()
+
+        # Idle handle to control when loop shouldn't block for i/o
+        self._ticker = pyuv.Idle(self._loop)
 
     def run(self):
-        self._stop = False
-        while not self._stop and self._run_once():
-            pass
+        self._run(pyuv.UV_RUN_DEFAULT)
 
     # run_forever - inherited from BaseEventLoop
 
@@ -61,9 +75,11 @@ class EventLoop(base_events.BaseEventLoop):
         if timeout is not None:
             timer = pyuv.Timer(self._loop)
             timer.start(lambda x: None, timeout, 0)
-        self._run_once()
-        if timeout is not None:
-            timer.close()
+        try:
+            self._run(pyuv.UV_RUN_ONCE)
+        finally:
+            if timeout is not None:
+                timer.close()
 
     def run_until_complete(self, future, timeout=None):
         handler_called = False
@@ -83,7 +99,7 @@ class EventLoop(base_events.BaseEventLoop):
         return future.result()
 
     def stop(self):
-        self._stop = True
+        self._loop.stop()
         self._waker.send()
 
     def close(self):
@@ -108,27 +124,34 @@ class EventLoop(base_events.BaseEventLoop):
     def call_later(self, delay, callback, *args):
         if delay <= 0:
             return self.call_soon(callback, *args)
-        handler = events.make_handler(callback, args)
         timer = pyuv.Timer(self._loop)
+        handler = Timer(callback, args, timer)
         timer.handler = handler
         timer.start(self._timer_cb, delay, 0)
         self._timers.append(timer)
         return handler
 
-    def call_repeatedly(self, interval, callback, *args):  # NEW!
+    def call_repeatedly(self, interval, callback, *args):
         if interval <= 0:
             raise ValueError('invalid interval specified: {}'.format(interval))
-        handler = events.make_handler(callback, args)
         timer = pyuv.Timer(self._loop)
+        handler = Timer(callback, args, timer)
         timer.handler = handler
         timer.start(self._timer_cb, interval, interval)
         self._timers.append(timer)
         return handler
 
-    # call_soon - inherited from BaseEventLoop
+    def call_soon(self, callback, *args):
+        handler = events.make_handler(callback, args)
+        self._ready.append(handler)
+        if not self._ticker.active:
+            self._ticker.start(lambda x: None)
+            self._ready_processor.ref()
+        return handler
 
     def call_soon_threadsafe(self, callback, *args):
-        handler = self.call_soon(callback, *args)
+        handler = events.make_handler(callback, args)
+        self._ready.append(handler)
         self._waker.send()
         return handler
 
@@ -377,21 +400,7 @@ class EventLoop(base_events.BaseEventLoop):
     def _make_ssl_transport(self, rawsock, protocol, sslcontext, waiter, extra=None):
         return selector_events._SelectorSslTransport(self, rawsock, protocol, sslcontext, waiter, extra)
 
-    def _run_once(self):
-        # Check if there are cancelled timers, if so close the handles
-        for timer in [timer for timer in self._timers if timer.handler.cancelled]:
-            timer.close()
-            self._timers.remove(timer)
-            del timer.handler
-
-        # If there is something ready to be run, prevent the loop from blocking for i/o
-        if self._ready:
-            self._ready_processor.ref()
-            mode = pyuv.UV_RUN_NOWAIT
-        else:
-            self._ready_processor.unref()
-            mode = pyuv.UV_RUN_ONCE
-
+    def _run(self, mode):
         r = self._loop.run(mode)
         if self._last_exc is not None:
             exc, self._last_exc = self._last_exc, None
@@ -479,6 +488,7 @@ class EventLoop(base_events.BaseEventLoop):
                     self._last_exc = sys.exc_info()
                     break
         if not self._ready:
+            self._ticker.stop()
             self._ready_processor.unref()
         else:
             self._ready_processor.ref()
