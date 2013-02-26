@@ -491,6 +491,12 @@ class EventLoop(base_events.BaseEventLoop):
         else:
             self._ready_processor.ref()
 
+        # Check for cancelled timers
+        for timer in [timer for timer in self._timers if timer.handler.cancelled]:
+            timer.close()
+            self._timers.remove(timer)
+            del timer.handler
+
     def _create_poll_handle(self, fdobj):
         poll_h = pyuv.Poll(self._loop, self._fileobj_to_fd(fdobj))
         poll_h.pevents = 0
