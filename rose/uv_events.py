@@ -38,7 +38,7 @@ class Timer(events.Handler):
 
     def cancel(self):
         super().cancel()
-        if not self._timer.closed:
+        if self._timer and self._timer.active:
             self._timer.stop()
         self._timer = None
 
