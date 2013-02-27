@@ -405,11 +405,7 @@ class EventLoop(base_events.BaseEventLoop):
         return r
 
     def _timer_cb(self, timer):
-        if timer.handler.cancelled:
-            del timer.handler
-            self._timers.remove(timer)
-            timer.close()
-            return
+        assert not timer.handler.cancelled
         self._ready.append(timer.handler)
         if not timer.repeat:
             del timer.handler
