@@ -30,6 +30,10 @@ if sys.platform == 'win32':
 _MAX_WORKERS = 5
 
 
+def _noop(*args, **kwargs):
+    pass
+
+
 class Timer(events.Handler):
 
     def __init__(self, callback, args, timer):
@@ -56,7 +60,7 @@ class EventLoop(base_events.BaseEventLoop):
         self._ready = collections.deque()
         self._timers = collections.deque()
 
-        self._waker = pyuv.Async(self._loop, lambda h: None)
+        self._waker = pyuv.Async(self._loop, _noop)
         self._waker.unref()
 
         self._ready_processor = pyuv.Check(self._loop)
@@ -74,7 +78,7 @@ class EventLoop(base_events.BaseEventLoop):
     def run_once(self, timeout=None):
         if timeout is not None:
             timer = pyuv.Timer(self._loop)
-            timer.start(lambda x: None, timeout, 0)
+            timer.start(_noop, timeout, 0)
         try:
             self._run(pyuv.UV_RUN_ONCE)
         finally:
@@ -143,7 +147,7 @@ class EventLoop(base_events.BaseEventLoop):
         handler = events.make_handler(callback, args)
         self._ready.append(handler)
         if not self._ticker.active:
-            self._ticker.start(lambda x: None)
+            self._ticker.start(_noop)
         return handler
 
     def call_soon_threadsafe(self, callback, *args):
