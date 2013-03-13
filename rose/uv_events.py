@@ -533,7 +533,3 @@ class EventLoop(base_events.BaseEventLoop):
         if sys.platform == 'win32':
             raise RuntimeError('Signals are not really supported on Windows')
 
-    def _socketpair(self):
-        # TODO: remove this, it's just here for the test suite
-        return socket.socketpair()
-
