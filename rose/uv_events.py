@@ -168,6 +168,7 @@ class EventLoop(base_events.BaseEventLoop):
     # getnameinfo - inherited from BaseEventLoop
     # create_connection - inherited from BaseEventLoop
     # start_serving - inherited from BaseEventLoop
+    # start_serving_datagram - inherited from BaseEventLoop
 
     def _start_serving(self, protocol_factory, sock):
         # Needed by BaseEventLoop.start_serving
@@ -400,6 +401,9 @@ class EventLoop(base_events.BaseEventLoop):
 
     def _make_ssl_transport(self, rawsock, protocol, sslcontext, waiter, extra=None):
         return selector_events._SelectorSslTransport(self, rawsock, protocol, sslcontext, waiter, extra)
+
+    def _make_datagram_transport(self, sock, protocol, address=None, extra=None):
+        return selector_events._SelectorDatagramTransport(self, sock, protocol, address, extra)
 
     def _run(self, mode):
         r = self._loop.run(mode)
