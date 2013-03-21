@@ -181,6 +181,9 @@ class EventLoop(base_events.BaseEventLoop):
     # getaddrinfo - inherited from BaseEventLoop
     # getnameinfo - inherited from BaseEventLoop
     # create_connection - inherited from BaseEventLoop
+    # create_datagram_connection - inherited from BaseEventLoop
+    # connect_read_pipe - inherited from BaseEventLoop
+    # connect_write_pipe - inherited from BaseEventLoop
     # start_serving - inherited from BaseEventLoop
     # start_serving_datagram - inherited from BaseEventLoop
 
@@ -418,6 +421,18 @@ class EventLoop(base_events.BaseEventLoop):
 
     def _make_datagram_transport(self, sock, protocol, address=None, extra=None):
         return selector_events._SelectorDatagramTransport(self, sock, protocol, address, extra)
+
+    def _make_read_pipe_transport(self, pipe, protocol, waiter=None, extra=None):
+        if sys.platform != 'win32':
+            from tulip import unix_events
+            return unix_events._UnixReadPipeTransport(self, pipe, protocol, waiter, extra)
+        raise NotImplementedError
+
+    def _make_write_pipe_transport(self, pipe, protocol, waiter=None, extra=None):
+        if sys.platform != 'win32':
+            from tulip import unix_events
+            return unix_events._UnixWritePipeTransport(self, pipe, protocol, waiter, extra)
+        raise NotImplementedError
 
     def _run(self, mode):
         r = self._loop.run(mode)
