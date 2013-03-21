@@ -19,6 +19,7 @@ from tulip import base_events
 from tulip import events
 from tulip import futures
 from tulip import selector_events
+from tulip import tasks
 
 
 # Errno values indicating the socket isn't ready for I/O just yet.
@@ -34,7 +35,7 @@ def _noop(*args, **kwargs):
     pass
 
 
-class Timer(events.Handler):
+class Timer(events.Handle):
 
     def __init__(self, callback, args, timer):
         super().__init__(callback, args)
@@ -71,11 +72,20 @@ class EventLoop(base_events.BaseEventLoop):
         self._ticker = pyuv.Idle(self._loop)
 
     def run(self):
-        self._run(pyuv.UV_RUN_DEFAULT)
+        if self._running:
+            raise RuntimeError('Event loop is running.')
+        self._running = True
+        try:
+            self._run(pyuv.UV_RUN_DEFAULT)
+        finally:
+            self._running = False
 
     # run_forever - inherited from BaseEventLoop
 
     def run_once(self, timeout=None):
+        if self._running:
+            raise RuntimeError('Event loop is running.')
+        self._running = True
         if timeout is not None:
             timer = pyuv.Timer(self._loop)
             timer.start(_noop, timeout, 0)
@@ -84,8 +94,12 @@ class EventLoop(base_events.BaseEventLoop):
         finally:
             if timeout is not None:
                 timer.close()
+            self._running = False
 
     def run_until_complete(self, future, timeout=None):
+        if (not isinstance(future, futures.Future) and tasks.iscoroutine(future)):
+            future = tasks.Task(future)
+        assert isinstance(future, futures.Future), 'Future is required'
         handler_called = False
         def stop_loop():
             nonlocal handler_called
@@ -121,7 +135,7 @@ class EventLoop(base_events.BaseEventLoop):
         assert not self._loop.run(pyuv.UV_RUN_NOWAIT)
         self._loop = None
 
-    # Methods returning Handlers for scheduling callbacks.
+    # Methods returning Handles for scheduling callbacks.
 
     def call_later(self, delay, callback, *args):
         if delay <= 0:
@@ -144,14 +158,14 @@ class EventLoop(base_events.BaseEventLoop):
         return handler
 
     def call_soon(self, callback, *args):
-        handler = events.make_handler(callback, args)
+        handler = events.make_handle(callback, args)
         self._ready.append(handler)
         if not self._ticker.active:
             self._ticker.start(_noop)
         return handler
 
     def call_soon_threadsafe(self, callback, *args):
-        handler = events.make_handler(callback, args)
+        handler = events.make_handle(callback, args)
         self._ready.append(handler)
         self._waker.send()
         return handler
@@ -192,12 +206,12 @@ class EventLoop(base_events.BaseEventLoop):
         # It's now up to the protocol to handle the connection.
 
     # Level-trigered I/O methods.
-    # The add_*() methods return a Handler.
+    # The add_*() methods return a Handle.
     # The remove_*() methods return True if something was removed,
     # False if there was nothing to delete.
 
     def add_reader(self, fd, callback, *args):
-        handler = events.make_handler(callback, args)
+        handler = events.make_handle(callback, args)
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
@@ -229,7 +243,7 @@ class EventLoop(base_events.BaseEventLoop):
             return True
 
     def add_writer(self, fd, callback, *args):
-        handler = events.make_handler(callback, args)
+        handler = events.make_handle(callback, args)
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
@@ -373,7 +387,7 @@ class EventLoop(base_events.BaseEventLoop):
     def add_signal_handler(self, sig, callback, *args):
         self._validate_signal(sig)
         signal_h = pyuv.Signal(self._loop)
-        handler = events.make_handler(callback, args)
+        handler = events.make_handle(callback, args)
         signal_h.handler = handler
         try:
             signal_h.start(self._signal_cb, sig)
