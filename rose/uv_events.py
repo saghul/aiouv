@@ -1,6 +1,5 @@
 
 import collections
-import errno
 import logging
 import pyuv
 import socket
@@ -21,11 +20,6 @@ from tulip import futures
 from tulip import selector_events
 from tulip import tasks
 
-
-# Errno values indicating the socket isn't ready for I/O just yet.
-_TRYAGAIN = frozenset((errno.EAGAIN, errno.EWOULDBLOCK, errno.EINPROGRESS))
-if sys.platform == 'win32':
-    _TRYAGAIN = frozenset(list(_TRYAGAIN) + [errno.WSAEWOULDBLOCK])
 
 # Argument for default thread pool executor creation.
 _MAX_WORKERS = 5
@@ -194,19 +188,18 @@ class EventLoop(base_events.BaseEventLoop):
     def _accept_connection(self, protocol_factory, sock):
         try:
             conn, addr = sock.accept()
-        except socket.error as exc:
-            if exc.errno in _TRYAGAIN:
-                return  # False alarm.
+        except (BlockingIOError, InterruptedError):
+            pass  # False alarm.
+        except:
             # Bad error.  Stop serving.
             self.remove_reader(sock.fileno())
             sock.close()
             # There's nowhere to send the error, so just log it.
             # TODO: Someone will want an error handler for this.
             logging.exception('Accept failed')
-            return
-        protocol = protocol_factory()
-        transport = self._make_socket_transport(conn, protocol, extra={'addr': addr})
-        # It's now up to the protocol to handle the connection.
+        else:
+            self._make_socket_transport(conn, protocol_factory(), extra={'addr': addr})
+            # It's now up to the protocol to handle the connection.
 
     # Level-trigered I/O methods.
     # The add_*() methods return a Handle.
@@ -301,15 +294,17 @@ class EventLoop(base_events.BaseEventLoop):
         try:
             data = sock.recv(n)
             fut.set_result(data)
-        except socket.error as exc:
-            if exc.errno not in _TRYAGAIN:
-                fut.set_exception(exc)
-            else:
-                self.add_reader(fd, self._sock_recv, fut, True, sock, n)
+        except (BlockingIOError, InterruptedError):
+            self.add_reader(fd, self._sock_recv, fut, True, sock, n)
+        except Exception as exc:
+            fut.set_exception(exc)
 
     def sock_sendall(self, sock, data):
         fut = futures.Future()
-        self._sock_sendall(fut, False, sock, data)
+        if data:
+            self._sock_sendall(fut, False, sock, data)
+        else:
+            fut.set_result(None)
         return fut
 
     def _sock_sendall(self, fut, registered, sock, data):
@@ -318,14 +313,13 @@ class EventLoop(base_events.BaseEventLoop):
             self.remove_writer(fd)
         if fut.cancelled():
             return
-        n = 0
         try:
-            if data:
-                n = sock.send(data)
-        except socket.error as exc:
-            if exc.errno not in _TRYAGAIN:
-                fut.set_exception(exc)
-                return
+            n = sock.send(data)
+        except (BlockingIOError, InterruptedError):
+            n = 0
+        except Exception as exc:
+            fut.set_exception(exc)
+            return
         if n == len(data):
             fut.set_result(None)
         else:
@@ -358,11 +352,10 @@ class EventLoop(base_events.BaseEventLoop):
                     # Jump to the except clause below.
                     raise socket.error(err, 'Connect call failed')
             fut.set_result(None)
-        except socket.error as exc:
-            if exc.errno not in _TRYAGAIN:
-                fut.set_exception(exc)
-            else:
-                self.add_connector(fd, self._sock_connect, fut, True, sock, address)
+        except (BlockingIOError, InterruptedError):
+            self.add_connector(fd, self._sock_connect, fut, True, sock, address)
+        except Exception as exc:
+            fut.set_exception(exc)
 
     def sock_accept(self, sock):
         fut = futures.Future()
@@ -379,11 +372,10 @@ class EventLoop(base_events.BaseEventLoop):
             conn, address = sock.accept()
             conn.setblocking(False)
             fut.set_result((conn, address))
-        except socket.error as exc:
-            if exc.errno not in _TRYAGAIN:
-                fut.set_exception(exc)
-            else:
-                self.add_reader(fd, self._sock_accept, fut, True, sock)
+        except (BlockingIOError, InterruptedError):
+            self.add_reader(fd, self._sock_accept, fut, True, sock)
+        except Exception as exc:
+            fut.set_exception(exc)
 
     # Signal handling.
 
