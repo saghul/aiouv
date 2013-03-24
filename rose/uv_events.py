@@ -76,10 +76,11 @@ class EventLoop(base_events.BaseEventLoop):
 
     # run_forever - inherited from BaseEventLoop
 
-    def run_once(self, timeout=None):
+    def run_once(self, timeout=0):
         if self._running:
             raise RuntimeError('Event loop is running.')
         self._running = True
+        self._waker.ref()
         if timeout is not None:
             timer = pyuv.Timer(self._loop)
             timer.start(_noop, timeout, 0)
@@ -89,6 +90,7 @@ class EventLoop(base_events.BaseEventLoop):
             if timeout is not None:
                 timer.close()
             self._running = False
+        self._waker.unref()
 
     def run_until_complete(self, future, timeout=None):
         if (not isinstance(future, futures.Future) and tasks.iscoroutine(future)):
