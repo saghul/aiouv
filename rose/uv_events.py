@@ -76,6 +76,7 @@ class EventLoop(base_events.BaseEventLoop):
             self._running = False
 
     # run_forever - inherited from BaseEventLoop
+    # run_until_complete - inherited from BaseEventLoop
 
     def run_once(self, timeout=0):
         if self._running:
@@ -96,26 +97,6 @@ class EventLoop(base_events.BaseEventLoop):
                 handle.close()
             self._running = False
         self._waker.unref()
-
-    def run_until_complete(self, future, timeout=None):
-        if (not isinstance(future, futures.Future) and tasks.iscoroutine(future)):
-            future = tasks.Task(future)
-        assert isinstance(future, futures.Future), 'Future is required'
-        handler_called = False
-        def stop_loop():
-            nonlocal handler_called
-            handler_called = True
-            self.stop()
-        future.add_done_callback(lambda _: self.stop())
-        if timeout is None:
-            self.run_forever()
-        else:
-            handler = self.call_later(timeout, stop_loop)
-            self.run()
-            handler.cancel()
-        if handler_called:
-            raise futures.TimeoutError
-        return future.result()
 
     def stop(self):
         self._loop.stop()
@@ -511,11 +492,15 @@ class EventLoop(base_events.BaseEventLoop):
             if not handler.cancelled:
                 try:
                     handler.callback(*handler.args)
+                except base_events._StopError:
+                    self._loop.stop()
+                    break
                 except Exception:
                     logging.exception('Exception in callback %s %r', handler.callback, handler.args)
                 except BaseException:
                     self._last_exc = sys.exc_info()
                     break
+
         if not self._ready:
             self._ticker.stop()
 
