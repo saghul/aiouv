@@ -9,6 +9,7 @@ try:
     import ssl
 except ImportError:
     ssl = None
+
 try:
     import signal
 except ImportError:
@@ -82,13 +83,17 @@ class EventLoop(base_events.BaseEventLoop):
         self._running = True
         self._waker.ref()
         if timeout is not None:
-            timer = pyuv.Timer(self._loop)
-            timer.start(_noop, timeout, 0)
+            if timeout == 0:
+                handle = pyuv.Idle(self._loop)
+                handle.start(_noop)
+            else:
+                handle = pyuv.Timer(self._loop)
+                handle.start(_noop, timeout, 0)
         try:
             self._run(pyuv.UV_RUN_ONCE)
         finally:
             if timeout is not None:
-                timer.close()
+                handle.close()
             self._running = False
         self._waker.unref()
 
