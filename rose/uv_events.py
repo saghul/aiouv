@@ -57,46 +57,39 @@ class EventLoop(base_events.BaseEventLoop):
         self._timers = collections.deque()
 
         self._waker = pyuv.Async(self._loop, _noop)
-        self._waker.unref()
 
         self._ready_processor = pyuv.Check(self._loop)
         self._ready_processor.start(self._process_ready)
-        self._ready_processor.unref()
 
         # Idle handle to control when loop shouldn't block for i/o
         self._ticker = pyuv.Idle(self._loop)
 
-    def run(self):
+    def run_forever(self):
         if self._running:
             raise RuntimeError('Event loop is running.')
         self._running = True
+        handler = self.call_repeatedly(24*3600, lambda: None)
         try:
             self._run(pyuv.UV_RUN_DEFAULT)
         finally:
             self._running = False
+            handler.cancel()
 
-    # run_forever - inherited from BaseEventLoop
     # run_until_complete - inherited from BaseEventLoop
 
     def run_once(self, timeout=0):
         if self._running:
             raise RuntimeError('Event loop is running.')
         self._running = True
-        self._waker.ref()
         if timeout is not None:
-            if timeout == 0:
-                handle = pyuv.Idle(self._loop)
-                handle.start(_noop)
-            else:
-                handle = pyuv.Timer(self._loop)
-                handle.start(_noop, timeout, 0)
+            handle = pyuv.Timer(self._loop)
+            handle.start(_noop, timeout, 0)
         try:
             self._run(pyuv.UV_RUN_ONCE)
         finally:
             if timeout is not None:
                 handle.close()
             self._running = False
-        self._waker.unref()
 
     def stop(self):
         self._loop.stop()
@@ -169,11 +162,11 @@ class EventLoop(base_events.BaseEventLoop):
     # start_serving - inherited from BaseEventLoop
     # start_serving_datagram - inherited from BaseEventLoop
 
-    def _start_serving(self, protocol_factory, sock):
+    def _start_serving(self, protocol_factory, sock, ssl=False):
         # Needed by BaseEventLoop.start_serving
-        self.add_reader(sock.fileno(), self._accept_connection, protocol_factory, sock)
+        self.add_reader(sock.fileno(), self._accept_connection, protocol_factory, sock, ssl)
 
-    def _accept_connection(self, protocol_factory, sock):
+    def _accept_connection(self, protocol_factory, sock, ssl=False):
         try:
             conn, addr = sock.accept()
         except (BlockingIOError, InterruptedError):
@@ -186,8 +179,12 @@ class EventLoop(base_events.BaseEventLoop):
             # TODO: Someone will want an error handler for this.
             logging.exception('Accept failed')
         else:
-            self._make_socket_transport(conn, protocol_factory(), extra={'addr': addr})
-            # It's now up to the protocol to handle the connection.
+            if ssl:
+                sslcontext = None if isinstance(ssl, bool) else ssl
+                self._make_ssl_transport(conn, protocol_factory(), sslcontext, None, server_side=True, extra={'addr': addr})
+            else:
+                self._make_socket_transport(conn, protocol_factory(), extra={'addr': addr})
+        # It's now up to the protocol to handle the connection.
 
     # Level-trigered I/O methods.
     # The add_*() methods return a Handle.
@@ -393,11 +390,11 @@ class EventLoop(base_events.BaseEventLoop):
 
     # Private / internal methods
 
-    def _make_socket_transport(self, sock, protocol, waiter=None, extra=None):
+    def _make_socket_transport(self, sock, protocol, waiter=None, *, extra=None):
         return selector_events._SelectorSocketTransport(self, sock, protocol, waiter, extra)
 
-    def _make_ssl_transport(self, rawsock, protocol, sslcontext, waiter, extra=None):
-        return selector_events._SelectorSslTransport(self, rawsock, protocol, sslcontext, waiter, extra)
+    def _make_ssl_transport(self, rawsock, protocol, sslcontext, waiter, *, server_side=False, extra=None):
+        return selector_events._SelectorSslTransport(self, rawsock, protocol, sslcontext, waiter, server_side, extra)
 
     def _make_datagram_transport(self, sock, protocol, address=None, extra=None):
         return selector_events._SelectorDatagramTransport(self, sock, protocol, address, extra)
