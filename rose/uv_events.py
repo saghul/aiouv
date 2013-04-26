@@ -90,22 +90,23 @@ class EventLoop(base_events.BaseEventLoop):
             self._running = False
 
     def run_until_complete(self, future, timeout=None):
-        if (not isinstance(future, futures.Future) and tasks.iscoroutine(future)):
-            future = tasks.Task(future)
-        assert isinstance(future, futures.Future), 'Future is required'
-        handler_called = False
+        if not isinstance(future, futures.Future):
+            if tasks.iscoroutine(future):
+                future = tasks.Task(future)
+            else:
+                assert False, 'A Future or coroutine is required'
+        handle_called = False
         def stop_loop():
-            nonlocal handler_called
-            handler_called = True
+            nonlocal handle_called
+            handle_called = True
             self.stop()
         future.add_done_callback(lambda _: self.stop())
-        if timeout is None:
-            self.run_forever()
-        else:
-            handler = self.call_later(timeout, stop_loop)
-            self.run()
-            handler.cancel()
-        if handler_called:
+        if timeout is not None:
+            handle = self.call_later(timeout, stop_loop)
+        self.run_forever()
+        if timeout is not None:
+            handle.cancel()
+        if handle_called:
             raise futures.TimeoutError
         return future.result()
 
