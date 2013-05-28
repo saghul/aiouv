@@ -1,7 +1,7 @@
 
-====================================================
-rose: a PEP-3156 compatible event loop based on pyuv
-====================================================
+======================================
+rose: a PEP-3156 compatible event loop
+======================================
 
 
 Overview
@@ -13,10 +13,11 @@ starting with Python 3.3. The reference implementation is codenamed "tulip" and 
 
 Rose is an event loop implementation for Tulip based on `pyuv <https://github.com/saghul/pyuv>`_.
 
-Rose depends on pyuv >= 0.10.0, you can install it by doing:
+Rose depends on Tulip and pyuv >= 0.10.0, you can install them by doing:
 
 ::
 
+    hg clone https://code.google.com/p/tulip/
     pip install -U pyuv
 
 
@@ -27,7 +28,6 @@ From the toplevel directory, run:
 
 ::
 
-    hg clone https://code.google.com/p/tulip/
     export PYTHONPATH=tulip/
     python runtests.py -v
 
