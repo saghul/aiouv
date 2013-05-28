@@ -3,7 +3,7 @@ import threading
 from tulip import events
 
 
-class EventLoopPolicy(threading.local, events.EventLoopPolicy):
+class EventLoopPolicy(threading.local, events.AbstractEventLoopPolicy):
     """In this policy, each thread has its own event loop."""
 
     _event_loop = None

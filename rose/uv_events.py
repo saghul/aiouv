@@ -1,9 +1,9 @@
 
 import collections
-import logging
 import pyuv
 import socket
 import sys
+import time
 
 try:
     import ssl
@@ -20,6 +20,7 @@ from tulip import events
 from tulip import futures
 from tulip import selector_events
 from tulip import tasks
+from tulip.log import tulip_log
 
 
 # Argument for default thread pool executor creation.
@@ -68,14 +69,13 @@ class EventLoop(base_events.BaseEventLoop):
         if self._running:
             raise RuntimeError('Event loop is running.')
         self._running = True
-        handler = self.call_repeatedly(24*3600, lambda: None)
         try:
             self._run(pyuv.UV_RUN_DEFAULT)
         finally:
             self._running = False
-            handler.cancel()
 
     def run_once(self, timeout=0):
+        # TODO: this will be deprecated at some point
         if self._running:
             raise RuntimeError('Event loop is running.')
         self._running = True
@@ -126,10 +126,20 @@ class EventLoop(base_events.BaseEventLoop):
         self._loop.walk(cb)
 
         # Run a loop iteration so that close callbacks are called and resources are freed
-        assert not self._loop.run(pyuv.UV_RUN_NOWAIT)
+        self._loop.run(pyuv.UV_RUN_DEFAULT)
         self._loop = None
 
-    # Methods returning Handles for scheduling callbacks.
+    def is_running(self):
+        return self._running
+
+    # Methods scheduling callbacks. All these return Handles.
+
+    def call_soon(self, callback, *args):
+        handler = events.make_handle(callback, args)
+        self._ready.append(handler)
+        if not self._ticker.active:
+            self._ticker.start(_noop)
+        return handler
 
     def call_later(self, delay, callback, *args):
         if delay <= 0:
@@ -141,22 +151,16 @@ class EventLoop(base_events.BaseEventLoop):
         self._timers.append(timer)
         return handler
 
-    def call_repeatedly(self, interval, callback, *args):
-        if interval <= 0:
-            raise ValueError('invalid interval specified: {}'.format(interval))
-        timer = pyuv.Timer(self._loop)
-        handler = Timer(callback, args, timer)
-        timer.handler = handler
-        timer.start(self._timer_cb, interval, interval)
-        self._timers.append(timer)
-        return handler
+    def call_at(self, when, callback, *args):
+        return self.call_later(when - self.time(), callback, *args)
 
-    def call_soon(self, callback, *args):
-        handler = events.make_handle(callback, args)
-        self._ready.append(handler)
-        if not self._ticker.active:
-            self._ticker.start(_noop)
-        return handler
+    def time(self):
+        return time.monotonic()
+
+    # Methods for interacting with threads.
+
+    # run_in_executor - inherited from BaseEventLoop
+    # set_default_executor - inherited from BaseEventLoop
 
     def call_soon_threadsafe(self, callback, *args):
         handler = events.make_handle(callback, args)
@@ -164,28 +168,22 @@ class EventLoop(base_events.BaseEventLoop):
         self._waker.send()
         return handler
 
-    # Methods returning Futures for interacting with threads.
-
-    # wrap_future - inherited from BaseEventLoop
-    # run_in_executor - inherited from BaseEventLoop
-    # set_default_executor - inherited from BaseEventLoop
-
     # Network I/O methods returning Futures.
 
     # getaddrinfo - inherited from BaseEventLoop
     # getnameinfo - inherited from BaseEventLoop
     # create_connection - inherited from BaseEventLoop
-    # create_datagram_connection - inherited from BaseEventLoop
+    # create_datagram_endpoint - inherited from BaseEventLoop
     # connect_read_pipe - inherited from BaseEventLoop
     # connect_write_pipe - inherited from BaseEventLoop
     # start_serving - inherited from BaseEventLoop
     # start_serving_datagram - inherited from BaseEventLoop
 
-    def _start_serving(self, protocol_factory, sock, ssl=False):
+    def _start_serving(self, protocol_factory, sock, ssl=None):
         # Needed by BaseEventLoop.start_serving
         self.add_reader(sock.fileno(), self._accept_connection, protocol_factory, sock, ssl)
 
-    def _accept_connection(self, protocol_factory, sock, ssl=False):
+    def _accept_connection(self, protocol_factory, sock, ssl=None):
         try:
             conn, addr = sock.accept()
         except (BlockingIOError, InterruptedError):
@@ -196,17 +194,20 @@ class EventLoop(base_events.BaseEventLoop):
             sock.close()
             # There's nowhere to send the error, so just log it.
             # TODO: Someone will want an error handler for this.
-            logging.exception('Accept failed')
+            tulip_log.exception('Accept failed')
         else:
             if ssl:
-                sslcontext = None if isinstance(ssl, bool) else ssl
-                self._make_ssl_transport(conn, protocol_factory(), sslcontext, None, server_side=True, extra={'addr': addr})
+                self._make_ssl_transport(conn, protocol_factory(), ssl, None, server_side=True, extra={'addr': addr})
             else:
                 self._make_socket_transport(conn, protocol_factory(), extra={'addr': addr})
         # It's now up to the protocol to handle the connection.
 
-    # Level-trigered I/O methods.
-    # The add_*() methods return a Handle.
+    def stop_serving(self, sock):
+        self.remove_reader(sock.fileno())
+        sock.close()
+
+    # Ready-based callback registration methods.
+    # The add_*() methods return None.
     # The remove_*() methods return True if something was removed,
     # False if there was nothing to delete.
 
@@ -219,12 +220,9 @@ class EventLoop(base_events.BaseEventLoop):
             self._fd_map[fd] = poll_h
         else:
             poll_h.stop()
-
         poll_h.pevents |= pyuv.UV_READABLE
         poll_h.read_handler = handler
         poll_h.start(poll_h.pevents, self._poll_cb)
-
-        return handler
 
     def remove_reader(self, fd):
         try:
@@ -232,6 +230,7 @@ class EventLoop(base_events.BaseEventLoop):
         except KeyError:
             return False
         else:
+            # TODO: check if there was a reader, else return False
             poll_h.stop()
             poll_h.pevents &= ~pyuv.UV_READABLE
             poll_h.read_handler = None
@@ -251,12 +250,9 @@ class EventLoop(base_events.BaseEventLoop):
             self._fd_map[fd] = poll_h
         else:
             poll_h.stop()
-
         poll_h.pevents |= pyuv.UV_WRITABLE
         poll_h.write_handler = handler
         poll_h.start(poll_h.pevents, self._poll_cb)
-
-        return handler
 
     def remove_writer(self, fd):
         try:
@@ -264,6 +260,7 @@ class EventLoop(base_events.BaseEventLoop):
         except KeyError:
             return False
         else:
+            # TODO: check if there was a writer, else return False
             poll_h.stop()
             poll_h.pevents &= ~pyuv.UV_WRITABLE
             poll_h.write_handler = None
@@ -273,10 +270,6 @@ class EventLoop(base_events.BaseEventLoop):
             else:
                 poll_h.start(poll_h.pevents, self._poll_cb)
             return True
-
-    add_connector = add_writer
-
-    remove_connector = remove_writer
 
     # Completion based I/O methods returning Futures.
 
@@ -343,7 +336,7 @@ class EventLoop(base_events.BaseEventLoop):
     def _sock_connect(self, fut, registered, sock, address):
         fd = sock.fileno()
         if registered:
-            self.remove_connector(fd)
+            self.remove_writer(fd)
         if fut.cancelled():
             return
         try:
@@ -357,7 +350,7 @@ class EventLoop(base_events.BaseEventLoop):
                     raise socket.error(err, 'Connect call failed')
             fut.set_result(None)
         except (BlockingIOError, InterruptedError):
-            self.add_connector(fd, self._sock_connect, fut, True, sock, address)
+            self.add_writer(fd, self._sock_connect, fut, True, sock, address)
         except Exception as exc:
             fut.set_exception(exc)
 
@@ -438,15 +431,14 @@ class EventLoop(base_events.BaseEventLoop):
         return r
 
     def _timer_cb(self, timer):
-        assert not timer.handler.cancelled
+        assert not timer.handler._cancelled
         self._ready.append(timer.handler)
-        if not timer.repeat:
-            del timer.handler
-            self._timers.remove(timer)
-            timer.close()
+        del timer.handler
+        self._timers.remove(timer)
+        timer.close()
 
     def _signal_cb(self, signal_h, signum):
-        if signal_h.handler.cancelled:
+        if signal_h.handler._cancelled:
             self.remove_signal_handler(signum)
             return
         self._ready.append(signal_h.handler)
@@ -457,12 +449,12 @@ class EventLoop(base_events.BaseEventLoop):
             # An error happened, signal both readability and writability and
             # let the error propagate
             if poll_h.read_handler is not None:
-                if poll_h.read_handler.cancelled:
+                if poll_h.read_handler._cancelled:
                     self.remove_reader(fd)
                 else:
                     self._ready.append(poll_h.read_handler)
             if poll_h.write_handler is not None:
-                if poll_h.write_handler.cancelled:
+                if poll_h.write_handler._cancelled:
                     self.remove_writer(fd)
                 else:
                     self._ready.append(poll_h.write_handler)
@@ -473,7 +465,7 @@ class EventLoop(base_events.BaseEventLoop):
 
         if events & pyuv.UV_READABLE:
             if poll_h.read_handler is not None:
-                if poll_h.read_handler.cancelled:
+                if poll_h.read_handler._cancelled:
                     self.remove_reader(fd)
                     modified = True
                 else:
@@ -482,7 +474,7 @@ class EventLoop(base_events.BaseEventLoop):
                 poll_h.pevents &= ~pyuv.UV_READABLE
         if events & pyuv.UV_WRITABLE:
             if poll_h.write_handler is not None:
-                if poll_h.write_handler.cancelled:
+                if poll_h.write_handler._cancelled:
                     self.remove_writer(fd)
                     modified = True
                 else:
@@ -505,19 +497,18 @@ class EventLoop(base_events.BaseEventLoop):
         ntodo = len(self._ready)
         for i in range(ntodo):
             handler = self._ready.popleft()
-            if not handler.cancelled:
+            if not handler._cancelled:
                 try:
-                    handler.callback(*handler.args)
-                except Exception:
-                    logging.exception('Exception in callback %s %r', handler.callback, handler.args)
+                    handler._run()
                 except BaseException:
                     self._last_exc = sys.exc_info()
                     break
+        handler = None  # break cycles when exception occurs
         if not self._ready:
             self._ticker.stop()
 
         # Check for cancelled timers
-        for timer in [timer for timer in self._timers if timer.handler.cancelled]:
+        for timer in [timer for timer in self._timers if timer.handler._cancelled]:
             timer.close()
             self._timers.remove(timer)
             del timer.handler
