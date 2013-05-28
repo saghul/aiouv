@@ -230,7 +230,7 @@ class EventLoop(base_events.BaseEventLoop):
         except KeyError:
             return False
         else:
-            # TODO: check if there was a reader, else return False
+            handler = poll_h.read_handler
             poll_h.stop()
             poll_h.pevents &= ~pyuv.UV_READABLE
             poll_h.read_handler = None
@@ -239,7 +239,10 @@ class EventLoop(base_events.BaseEventLoop):
                 poll_h.close()
             else:
                 poll_h.start(poll_h.pevents, self._poll_cb)
-            return True
+            if handler:
+                handler.cancel()
+                return True
+            return False
 
     def add_writer(self, fd, callback, *args):
         handler = events.make_handle(callback, args)
@@ -260,7 +263,7 @@ class EventLoop(base_events.BaseEventLoop):
         except KeyError:
             return False
         else:
-            # TODO: check if there was a writer, else return False
+            handler = poll_h.write_handler
             poll_h.stop()
             poll_h.pevents &= ~pyuv.UV_WRITABLE
             poll_h.write_handler = None
@@ -269,7 +272,10 @@ class EventLoop(base_events.BaseEventLoop):
                 poll_h.close()
             else:
                 poll_h.start(poll_h.pevents, self._poll_cb)
-            return True
+            if handler:
+                handler.cancel()
+                return True
+            return False
 
     # Completion based I/O methods returning Futures.
 
