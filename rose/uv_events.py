@@ -31,7 +31,7 @@ def _noop(*args, **kwargs):
     pass
 
 
-class Timer(events.Handle):
+class TimerHandle(events.Handle):
 
     def __init__(self, callback, args, timer):
         super().__init__(callback, args)
@@ -119,7 +119,7 @@ class EventLoop(base_events.BaseEventLoop):
         if delay <= 0:
             return self.call_soon(callback, *args)
         timer = pyuv.Timer(self._loop)
-        handler = Timer(callback, args, timer)
+        handler = TimerHandle(callback, args, timer)
         timer.handler = handler
         timer.start(self._timer_cb, delay, 0)
         self._timers.append(timer)
