@@ -74,21 +74,6 @@ class EventLoop(base_events.BaseEventLoop):
         finally:
             self._running = False
 
-    def run_once(self, timeout=0):
-        # TODO: this will be deprecated at some point
-        if self._running:
-            raise RuntimeError('Event loop is running.')
-        self._running = True
-        if timeout is not None:
-            handle = pyuv.Timer(self._loop)
-            handle.start(_noop, timeout, 0)
-        try:
-            self._run(pyuv.UV_RUN_ONCE)
-        finally:
-            if timeout is not None:
-                handle.close()
-            self._running = False
-
     def run_until_complete(self, future, timeout=None):
         if not isinstance(future, futures.Future):
             if tasks.iscoroutine(future):
