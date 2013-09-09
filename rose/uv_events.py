@@ -254,7 +254,7 @@ class EventLoop(base_events.BaseEventLoop):
     # Completion based I/O methods returning Futures.
 
     def sock_recv(self, sock, n):
-        fut = futures.Future()
+        fut = futures.Future(loop=self)
         self._sock_recv(fut, False, sock, n)
         return fut
 
@@ -270,14 +270,15 @@ class EventLoop(base_events.BaseEventLoop):
             return
         try:
             data = sock.recv(n)
-            fut.set_result(data)
         except (BlockingIOError, InterruptedError):
             self.add_reader(fd, self._sock_recv, fut, True, sock, n)
         except Exception as exc:
             fut.set_exception(exc)
+        else:
+            fut.set_result(data)
 
     def sock_sendall(self, sock, data):
-        fut = futures.Future()
+        fut = futures.Future(loop=self)
         if data:
             self._sock_sendall(fut, False, sock, data)
         else:
@@ -309,7 +310,7 @@ class EventLoop(base_events.BaseEventLoop):
         # self.getaddrinfo() for you here.  But verifying this is
         # complicated; the socket module doesn't have a pattern for
         # IPv6 addresses (there are too many forms, apparently).
-        fut = futures.Future()
+        fut = futures.Future(loop=self)
         self._sock_connect(fut, False, sock, address)
         return fut
 
@@ -335,7 +336,7 @@ class EventLoop(base_events.BaseEventLoop):
             fut.set_exception(exc)
 
     def sock_accept(self, sock):
-        fut = futures.Future()
+        fut = futures.Future(loop=self)
         self._sock_accept(fut, False, sock)
         return fut
 
