@@ -27,10 +27,6 @@ from tulip.log import tulip_log
 _MAX_WORKERS = 5
 
 
-def _noop(*args, **kwargs):
-    pass
-
-
 class TimerHandle(events.Handle):
 
     def __init__(self, callback, args, timer):
@@ -57,13 +53,8 @@ class EventLoop(base_events.BaseEventLoop):
         self._ready = collections.deque()
         self._timers = collections.deque()
 
-        self._waker = pyuv.Async(self._loop, _noop)
-
-        self._ready_processor = pyuv.Check(self._loop)
-        self._ready_processor.start(self._process_ready)
-
-        # Idle handle to control when loop shouldn't block for i/o
-        self._ticker = pyuv.Idle(self._loop)
+        self._waker = pyuv.Async(self._loop, self._async_cb)
+        self._ready_processor = pyuv.Idle(self._loop)
 
     def run_forever(self):
         if self._running:
@@ -110,9 +101,7 @@ class EventLoop(base_events.BaseEventLoop):
 
     def call_soon(self, callback, *args):
         handler = events.make_handle(callback, args)
-        self._ready.append(handler)
-        if not self._ticker.active:
-            self._ticker.start(_noop)
+        self._add_callback(handler)
         return handler
 
     def call_later(self, delay, callback, *args):
@@ -138,6 +127,10 @@ class EventLoop(base_events.BaseEventLoop):
 
     def call_soon_threadsafe(self, callback, *args):
         handler = events.make_handle(callback, args)
+        # We don't use _add_callback here because starting the Idle handle
+        # is not threadsafe. Instead, we queue the callback and in the Async
+        # handle callback (which is run in the loop thread) we start the
+        # Idle handle if needed
         self._ready.append(handler)
         self._waker.send()
         return handler
@@ -410,9 +403,18 @@ class EventLoop(base_events.BaseEventLoop):
             raise exc[1]
         return r
 
+    def _add_callback(self, callback):
+        self._ready.append(callback)
+        if not self._ready_processor.active:
+            self._ready_processor.start(self._process_ready)
+
+    def _async_cb(self, async):
+        if not self._ready_processor.active:
+            self._ready_processor.start(self._process_ready)
+
     def _timer_cb(self, timer):
         assert not timer.handler._cancelled
-        self._ready.append(timer.handler)
+        self._add_callback(timer.handler)
         del timer.handler
         self._timers.remove(timer)
         timer.close()
@@ -421,7 +423,7 @@ class EventLoop(base_events.BaseEventLoop):
         if signal_h.handler._cancelled:
             self.remove_signal_handler(signum)
             return
-        self._ready.append(signal_h.handler)
+        self._add_callback(signal_h.handler)
 
     def _poll_cb(self, poll_h, events, error):
         fd = poll_h.fileno()
@@ -432,12 +434,12 @@ class EventLoop(base_events.BaseEventLoop):
                 if poll_h.read_handler._cancelled:
                     self.remove_reader(fd)
                 else:
-                    self._ready.append(poll_h.read_handler)
+                    self._add_callback(poll_h.read_handler)
             if poll_h.write_handler is not None:
                 if poll_h.write_handler._cancelled:
                     self.remove_writer(fd)
                 else:
-                    self._ready.append(poll_h.write_handler)
+                    self._add_callback(poll_h.write_handler)
             return
 
         old_events = poll_h.pevents
@@ -449,7 +451,7 @@ class EventLoop(base_events.BaseEventLoop):
                     self.remove_reader(fd)
                     modified = True
                 else:
-                    self._ready.append(poll_h.read_handler)
+                    self._add_callback(poll_h.read_handler)
             else:
                 poll_h.pevents &= ~pyuv.UV_READABLE
         if events & pyuv.UV_WRITABLE:
@@ -458,7 +460,7 @@ class EventLoop(base_events.BaseEventLoop):
                     self.remove_writer(fd)
                     modified = True
                 else:
-                    self._ready.append(poll_h.write_handler)
+                    self._add_callback(poll_h.write_handler)
             else:
                 poll_h.pevents &= ~pyuv.UV_WRITABLE
 
@@ -485,9 +487,9 @@ class EventLoop(base_events.BaseEventLoop):
                     break
         handler = None  # break cycles when exception occurs
         if not self._ready:
-            self._ticker.stop()
+            self._ready_processor.stop()
 
-        # Check for cancelled timers
+        # Cleanup cancelled timers
         for timer in [timer for timer in self._timers if timer.handler._cancelled]:
             timer.close()
             self._timers.remove(timer)
