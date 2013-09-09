@@ -484,6 +484,7 @@ class EventLoop(base_events.BaseEventLoop):
                     handler._run()
                 except BaseException:
                     self._last_exc = sys.exc_info()
+                    self._loop.stop()
                     break
         handler = None  # break cycles when exception occurs
         if not self._ready:
