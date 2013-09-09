@@ -35,8 +35,13 @@ class TimerHandle(events.Handle):
 
     def cancel(self):
         super().cancel()
-        if self._timer and self._timer.active:
-            self._timer.stop()
+        if self._timer and not self._timer.closed:
+            # cancel() is not supposed to be thread safe, this is clearly
+            # not either
+            loop = self._timer.loop._rose_loop
+            self._timer.close()
+            loop._timers.remove(self._timer)
+            del self._timer.handler
         self._timer = None
 
 
@@ -45,6 +50,7 @@ class EventLoop(base_events.BaseEventLoop):
     def __init__(self):
         super().__init__()
         self._loop = pyuv.Loop()
+        self._loop._rose_loop = self
         self._default_executor = None
         self._last_exc = None
 
@@ -92,6 +98,7 @@ class EventLoop(base_events.BaseEventLoop):
 
         # Run a loop iteration so that close callbacks are called and resources are freed
         self._loop.run(pyuv.UV_RUN_DEFAULT)
+        del self._loop._rose_loop
         self._loop = None
 
     def is_running(self):
@@ -489,12 +496,6 @@ class EventLoop(base_events.BaseEventLoop):
         handler = None  # break cycles when exception occurs
         if not self._ready:
             self._ready_processor.stop()
-
-        # Cleanup cancelled timers
-        for timer in [timer for timer in self._timers if timer.handler._cancelled]:
-            timer.close()
-            self._timers.remove(timer)
-            del timer.handler
 
     def _create_poll_handle(self, fdobj):
         poll_h = pyuv.Poll(self._loop, self._fileobj_to_fd(fdobj))
