@@ -160,6 +160,7 @@ class EventLoop(base_events.BaseEventLoop):
     def _accept_connection(self, protocol_factory, sock, ssl=None):
         try:
             conn, addr = sock.accept()
+            conn.setblocking(False)
         except (BlockingIOError, InterruptedError):
             pass  # False alarm.
         except:
