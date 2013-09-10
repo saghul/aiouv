@@ -1,5 +1,6 @@
 
 import collections
+import os
 import pyuv
 import socket
 import sys
@@ -56,6 +57,7 @@ class EventLoop(base_events.BaseEventLoop):
 
         self._fd_map = {}
         self._signal_handlers = {}
+        self._subprocesses = {}
         self._ready = collections.deque()
         self._timers = collections.deque()
 
@@ -88,6 +90,7 @@ class EventLoop(base_events.BaseEventLoop):
     def close(self):
         self._fd_map.clear()
         self._signal_handlers.clear()
+        self._subprocesses.clear()
         self._ready.clear()
         self._timers.clear()
 
@@ -404,6 +407,50 @@ class EventLoop(base_events.BaseEventLoop):
             from tulip import unix_events
             return unix_events._UnixWritePipeTransport(self, pipe, protocol, waiter, extra)
         raise NotImplementedError
+
+    @tasks.coroutine
+    def _make_subprocess_transport(self, protocol, args, shell, stdin, stdout, stderr, bufsize, extra=None, **kwargs):
+        if sys.platform == 'win32':
+            raise NotImplementedError
+        from tulip import unix_events
+        self._reg_sigchld()
+        transp = unix_events._UnixSubprocessTransport(self, protocol, args, shell, stdin, stdout, stderr, bufsize, extra=None, **kwargs)
+        self._subprocesses[transp.get_pid()] = transp
+        yield from transp._post_init()
+        return transp
+
+    def _reg_sigchld(self):
+        if signal.SIGCHLD not in self._signal_handlers:
+            self.add_signal_handler(signal.SIGCHLD, self._sig_chld)
+
+    def _sig_chld(self):
+        try:
+            while True:
+                try:
+                    pid, status = os.waitpid(0, os.WNOHANG)
+                except ChildProcessError:
+                    break
+                if pid == 0:
+                    continue
+                elif os.WIFSIGNALED(status):
+                    returncode = -os.WTERMSIG(status)
+                elif os.WIFEXITED(status):
+                    returncode = os.WEXITSTATUS(status)
+                else:
+                    # covered by
+                    # SelectorEventLoopTests.test__sig_chld_unknown_status
+                    # from tests/unix_events_test.py
+                    # bug in coverage.py version 3.6 ???
+                    continue  # pragma: no cover
+                transp = self._subprocesses.get(pid)
+                if transp is not None:
+                    transp._process_exited(returncode)
+        except Exception:
+            tulip_log.exception('Unknown exception in SIGCHLD handler')
+
+    def _subprocess_closed(self, transport):
+        pid = transport.get_pid()
+        self._subprocesses.pop(pid, None)
 
     def _run(self, mode):
         r = self._loop.run(mode)
