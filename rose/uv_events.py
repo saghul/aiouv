@@ -196,8 +196,6 @@ class EventLoop(base_events.BaseEventLoop):
         except KeyError:
             poll_h = self._create_poll_handle(fd)
             self._fd_map[fd] = poll_h
-        else:
-            poll_h.stop()
         poll_h.pevents |= pyuv.UV_READABLE
         poll_h.read_handler = handler
         poll_h.start(poll_h.pevents, self._poll_cb)
@@ -209,7 +207,6 @@ class EventLoop(base_events.BaseEventLoop):
             return False
         else:
             handler = poll_h.read_handler
-            poll_h.stop()
             poll_h.pevents &= ~pyuv.UV_READABLE
             poll_h.read_handler = None
             if poll_h.pevents == 0:
@@ -229,8 +226,6 @@ class EventLoop(base_events.BaseEventLoop):
         except KeyError:
             poll_h = self._create_poll_handle(fd)
             self._fd_map[fd] = poll_h
-        else:
-            poll_h.stop()
         poll_h.pevents |= pyuv.UV_WRITABLE
         poll_h.write_handler = handler
         poll_h.start(poll_h.pevents, self._poll_cb)
@@ -242,7 +237,6 @@ class EventLoop(base_events.BaseEventLoop):
             return False
         else:
             handler = poll_h.write_handler
-            poll_h.stop()
             poll_h.pevents &= ~pyuv.UV_WRITABLE
             poll_h.write_handler = None
             if poll_h.pevents == 0:
@@ -522,7 +516,6 @@ class EventLoop(base_events.BaseEventLoop):
 
         if not modified and old_events != poll_h.pevents:
             # Rearm the handle
-            poll_h.stop()
             poll_h.start(poll_h.pevents, self._poll_cb)
 
     def _process_ready(self, handle):
