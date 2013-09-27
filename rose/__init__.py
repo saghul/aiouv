@@ -1,6 +1,9 @@
 
 import threading
 from tulip import events
+from rose._events import EventLoop
+
+__all__ = ['EventLoopPolicy', 'EventLoop']
 
 
 class EventLoopPolicy(threading.local, events.AbstractEventLoopPolicy):
@@ -18,6 +21,5 @@ class EventLoopPolicy(threading.local, events.AbstractEventLoopPolicy):
         self._event_loop = event_loop
 
     def new_event_loop(self):
-        from . import uv_events
-        return uv_events.EventLoop()
+        return EventLoop()
 
