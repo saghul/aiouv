@@ -21,6 +21,55 @@ Rose depends on Tulip and pyuv >= 0.10.0, you can install them by doing:
     pip install -U pyuv
 
 
+Extra API functions
+===================
+
+Rose provides a few functions to create TCP, and UDP connections as well as cross
+platform named pipes support.
+
+listen_tcp(loop, protocol_factory, addr)
+----------------------------------------
+
+Creates a TCP server listening in the specified address (IP / port tuple). On new
+connections a new `TCPTransport` will be created and a protocol will be created using
+the supplied factory.
+
+Returns the listening handle.
+
+connect_tcp(loop, protocol_factory, addr, bindaddr=None)
+--------------------------------------------------------
+
+Create a TCP connection to the specified address. If bindaddr is specified, the local
+address is bound to it.
+
+Returns a tuple with the created transport and protocol.
+
+listen_pipe(loop, protocol_factory, name)
+----------------------------------------
+
+Creates a Pipe server listening in the specified pipe name. On new
+connections a new `PipeTransport` will be created and a protocol will be created using
+the supplied factory.
+
+Returns the listening handle.
+
+connect_pipe(loop, protocol_factory, name)
+------------------------------------------
+
+Create a Pipe connection to the specified pipe name.
+
+Returns a tuple with the created transport and protocol.
+
+create_udp_endpoint(loop, protocol_factory, local_addr=None, remote_addr=None)
+------------------------------------------------------------------------------
+
+Created a UDP endpoint. If local_addr is specified, the local interface will be bound
+to it. If remote_addr is specified, the remote target is set and it doesn't need
+to be specified when calling sendto().
+
+Returns a tuple with the created transport and protocol.
+
+
 Running the test suite
 ======================
 
