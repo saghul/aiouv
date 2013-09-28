@@ -6,7 +6,9 @@ from tulip import tasks
 from tulip import transports
 from tulip.log import tulip_log
 
-__all__ = ['connect_tcp', 'listen_tcp', 'connect_pipe', 'listen_pipe']
+__all__ = ['connect_tcp', 'listen_tcp',
+           'connect_pipe', 'listen_pipe',
+           'create_udp_endpoint']
 
 
 class StreamTransport(transports.Transport):
@@ -125,7 +127,7 @@ class StreamTransport(transports.Transport):
                 finally:
                     self.close()
             else:
-                tulip_log.warning('error reading from TCP connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
+                tulip_log.warning('error reading from connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
                 exc = ConnectionError(error, pyuv.errno.strerror(error))
                 self._close(exc)
         else:
@@ -133,7 +135,7 @@ class StreamTransport(transports.Transport):
 
     def _on_write(self, handle, error):
         if error is not None:
-            tulip_log.warning('error writing to TCP connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
+            tulip_log.warning('error writing to connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
             exc = ConnectionError(error, pyuv.errno.strerror(error))
             self._close(exc)
             return
@@ -142,6 +144,75 @@ class StreamTransport(transports.Transport):
         self._shut = True
         if self._closing:
             self._call_connection_lost(None)
+
+
+class UDPTransport(transports.DatagramTransport):
+
+    def __init__(self, loop, protocol, handle, addr, extra=None):
+        super().__init__(extra)
+        self._loop = loop
+        self._protocol = protocol
+        self._handle = handle
+
+        self._addr = addr
+        self._closing = False
+
+        self._handle.start_recv(self._on_recv)
+        self._loop.call_soon(self._protocol.connection_made, self)
+
+    @property
+    def loop(self):
+        return self._loop
+
+    def sendto(self, data, addr=None):
+        assert isinstance(data, bytes), repr(data)
+        if not data:
+            return
+        if self._closing:
+            return
+        if self._addr:
+            assert addr in (None, self._addr)
+        self._handle.send(addr or self._addr, data, self._on_send)
+
+    def abort(self):
+        self._close(None)
+
+    def close(self):
+        if self._closing:
+            return
+        self._closing = True
+        self._call_connection_lost(None)
+
+    def _call_connection_lost(self, exc):
+        try:
+            self._protocol.connection_lost(exc)
+        finally:
+            self._handle.close()
+            self._handle = None
+            self._protocol = None
+            self._loop = None
+
+    def _close(self, exc):
+        if self._closing:
+            return
+        self._closing = True
+        if self._addr and exc and exc.args[0] == pyuv.errno.UV_ECONNREFUSED:
+            self._protocol.connection_refused(exc)
+        self._loop.call_soon(self._call_connection_lost, exc)
+
+    def _on_recv(self, handle, addr, flags, data, error):
+        if error is not None:
+            tulip_log.warning('error reading from UDP endpoint: {} - {}'.format(error, pyuv.errno.strerror(error)))
+            exc = ConnectionError(error, pyuv.errno.strerror(error))
+            self._close(exc)
+        else:
+            self._protocol.datagram_received(data, addr)
+
+    def _on_send(self, handle, error):
+        if error is not None:
+            tulip_log.warning('error sending to UDP endpoint: {} - {}'.format(error, pyuv.errno.strerror(error)))
+            exc = ConnectionError(error, pyuv.errno.strerror(error))
+            self._close(exc)
 
 
 ## Some extra functions for using the extra transports provided by rose
@@ -243,5 +314,17 @@ def connect_pipe(loop, protocol_factory, name):
     yield from waiter
 
     transport = PipeTransport(loop, protocol, handle)
+    return transport, protocol
+
+
+def create_udp_endpoint(loop, protocol_factory, local_addr=None, remote_addr=None):
+    if not (local_addr or remote_addr):
+        raise ValueError('local or remote address must be specified')
+    handle = pyuv.UDP(loop._loop)
+    if local_addr:
+        handle.bind(local_addr)
+    protocol = protocol_factory()
+    addr = handle.getsockname()
+    transport = UDPTransport(loop, protocol, handle, remote_addr, extra={'addr': addr})
     return transport, protocol
 

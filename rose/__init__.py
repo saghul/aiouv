@@ -2,11 +2,12 @@
 import threading
 from tulip import events
 from rose._events import EventLoop
-from rose._transports import connect_tcp, listen_tcp, connect_pipe, listen_pipe
+from rose._transports import connect_tcp, listen_tcp, connect_pipe, listen_pipe, create_udp_endpoint
 
 __all__ = ['EventLoopPolicy', 'EventLoop',
            'connect_tcp', 'listen_tcp',
-           'connect_pipe', 'listen_pipe']
+           'connect_pipe', 'listen_pipe',
+           'create_udp_endpoint']
 
 
 class EventLoopPolicy(threading.local, events.AbstractEventLoopPolicy):
