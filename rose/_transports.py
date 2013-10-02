@@ -19,10 +19,8 @@ class StreamTransport(transports.Transport):
         self._protocol = protocol
         self._handle = handle
 
-        self._buffer = []
         self._closing = False
         self._shut = False
-        self._write_paused = False
 
         self._handle.start_read(self._on_read)
         self._loop.call_soon(self._protocol.connection_made, self)
@@ -35,11 +33,6 @@ class StreamTransport(transports.Transport):
         if self._closing:
             return
         self._closing = True
-        if self._buffer:
-            assert not self._shut
-            self._loop.call_soon(self._call_connection_lost, None)
-            buffer, self._buffer = self._buffer, buffer
-            self._handle.writelines(buffer, self._on_write)
         if not self._shut:
             self._handle.shutdown(self._on_shutdown)
         else:
@@ -63,20 +56,14 @@ class StreamTransport(transports.Transport):
             return
         if self._closing:
             return
-        if self._write_paused:
-            self._buffer.append(data)
-        else:
-            self._handle.write(data, self._on_write)
+        self._handle.write(data, self._on_write)
 
     def writelines(self, seq):
         if not seq:
             return
         if self._closing:
             return
-        if self._write_paused:
-            self._buffer.extend(seq)
-        else:
-            self._handle.writelines(seq, self._on_write)
+        self._handle.writelines(seq, self._on_write)
 
     def write_eof(self):
         # TODO: add shutting flag to prevent this from being called multiple times
@@ -87,18 +74,6 @@ class StreamTransport(transports.Transport):
     def can_write_eof(self):
         return True
 
-    def pause_writing(self):
-        self._write_paused = True
-
-    def resume_writing(self):
-        self._write_paused = False
-        if not self._closing and self._buffer:
-            buffer, self._buffer = self._buffer, []
-            self._handle.writelines(buffer)
-
-    def discard_output(self):
-        self._buffer.clear()
-
     def abort(self):
         self._close(None)
 
@@ -106,7 +81,6 @@ class StreamTransport(transports.Transport):
         if self._closing:
             return
         self._closing = True
-        self._buffer.clear()
         self._loop.call_soon(self._call_connection_lost, exc)
 
     def _call_connection_lost(self, exc):
