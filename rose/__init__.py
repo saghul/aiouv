@@ -1,6 +1,7 @@
 
+import asyncio
 import threading
-from tulip import events
+
 from rose._events import EventLoop
 from rose._transports import connect_tcp, listen_tcp, connect_pipe, listen_pipe, create_udp_endpoint
 
@@ -10,7 +11,7 @@ __all__ = ['EventLoopPolicy', 'EventLoop',
            'create_udp_endpoint']
 
 
-class EventLoopPolicy(threading.local, events.AbstractEventLoopPolicy):
+class EventLoopPolicy(threading.local, asyncio.events.AbstractEventLoopPolicy):
     """In this policy, each thread has its own event loop."""
 
     _event_loop = None
@@ -21,7 +22,7 @@ class EventLoopPolicy(threading.local, events.AbstractEventLoopPolicy):
         return self._event_loop
 
     def set_event_loop(self, event_loop):
-        assert event_loop is None or isinstance(event_loop, events.AbstractEventLoop)
+        assert event_loop is None or isinstance(event_loop, asyncio.events.AbstractEventLoop)
         self._event_loop = event_loop
 
     def new_event_loop(self):

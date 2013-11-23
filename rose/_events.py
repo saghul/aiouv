@@ -16,12 +16,12 @@ try:
 except ImportError:
     signal = None
 
-from tulip import base_events
-from tulip import events
-from tulip import futures
-from tulip import selector_events
-from tulip import tasks
-from tulip.log import tulip_log
+from asyncio import base_events
+from asyncio import events
+from asyncio import futures
+from asyncio import selector_events
+from asyncio import tasks
+from asyncio.log import logger
 
 
 # Argument for default thread pool executor creation.
@@ -172,7 +172,7 @@ class EventLoop(base_events.BaseEventLoop):
             sock.close()
             # There's nowhere to send the error, so just log it.
             # TODO: Someone will want an error handler for this.
-            tulip_log.exception('Accept failed')
+            logger.exception('Accept failed')
         else:
             if ssl:
                 self._make_ssl_transport(conn, protocol_factory(), ssl, None, server_side=True, extra={'addr': addr})
@@ -392,21 +392,23 @@ class EventLoop(base_events.BaseEventLoop):
 
     def _make_read_pipe_transport(self, pipe, protocol, waiter=None, extra=None):
         if sys.platform != 'win32':
-            from tulip import unix_events
+            from asyncio import unix_events
             return unix_events._UnixReadPipeTransport(self, pipe, protocol, waiter, extra)
         raise NotImplementedError
 
     def _make_write_pipe_transport(self, pipe, protocol, waiter=None, extra=None):
         if sys.platform != 'win32':
-            from tulip import unix_events
+            from asyncio import unix_events
             return unix_events._UnixWritePipeTransport(self, pipe, protocol, waiter, extra)
+        # TODO
         raise NotImplementedError
 
     @tasks.coroutine
     def _make_subprocess_transport(self, protocol, args, shell, stdin, stdout, stderr, bufsize, extra=None, **kwargs):
         if sys.platform == 'win32':
+            # TODO
             raise NotImplementedError
-        from tulip import unix_events
+        from asyncio import unix_events
         self._reg_sigchld()
         transp = unix_events._UnixSubprocessTransport(self, protocol, args, shell, stdin, stdout, stderr, bufsize, extra=None, **kwargs)
         self._subprocesses[transp.get_pid()] = transp
@@ -440,7 +442,7 @@ class EventLoop(base_events.BaseEventLoop):
                 if transp is not None:
                     transp._process_exited(returncode)
         except Exception:
-            tulip_log.exception('Unknown exception in SIGCHLD handler')
+            logger.exception('Unknown exception in SIGCHLD handler')
 
     def _subprocess_closed(self, transport):
         pid = transport.get_pid()

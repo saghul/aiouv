@@ -1,16 +1,15 @@
 
 import argparse
-import rose
+import asyncio
 import signal
-import tulip
 
-from tulip import protocols
+import rose
 
 
 loop = rose.EventLoop()
 
 
-class EchoServerProtocol(protocols.Protocol):
+class EchoServerProtocol(asyncio.Protocol):
 
     def connection_made(self, transport):
         print("Client connected")
@@ -26,7 +25,7 @@ class EchoServerProtocol(protocols.Protocol):
         print('Connection lost:', exc)
 
 
-class EchoClientProtocol(protocols.Protocol):
+class EchoClientProtocol(asyncio.Protocol):
 
     def connection_made(self, transport):
         print("Connected!")
@@ -50,7 +49,7 @@ def start_tcp_server(host, port):
 
 
 def start_tcp_client(host, port):
-    t = tulip.async(rose.connect_tcp(loop, EchoClientProtocol, (host, port)), loop=loop)
+    t = asyncio.async(rose.connect_tcp(loop, EchoClientProtocol, (host, port)), loop=loop)
     transport, protocol = loop.run_until_complete(t)
     print('Echo TCP client connected')
     return transport, protocol
@@ -63,7 +62,7 @@ def start_pipe_server(name):
 
 
 def start_pipe_client(name):
-    t = tulip.async(rose.connect_pipe(loop, EchoClientProtocol, name), loop=loop)
+    t = asyncio.async(rose.connect_pipe(loop, EchoClientProtocol, name), loop=loop)
     transport, protocol = loop.run_until_complete(t)
     print('Echo Pipe client connected')
     return transport, protocol
@@ -93,7 +92,7 @@ if __name__ == '__main__':
         raise RuntimeError('incorrect parameters')
     if (args.tcp and args.pipe) or (not args.tcp and not args.pipe):
         raise RuntimeError('incorrect parameters')
-    
+
     if args.tcp:
         host, _ , port = args.addr.rpartition(':')
         host = host.strip('[]')

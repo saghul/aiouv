@@ -1,10 +1,10 @@
 
 import pyuv
 
-from tulip import futures
-from tulip import tasks
-from tulip import transports
-from tulip.log import tulip_log
+from asyncio import futures
+from asyncio import tasks
+from asyncio import transports
+from asyncio.log import logger
 
 __all__ = ['connect_tcp', 'listen_tcp',
            'connect_pipe', 'listen_pipe',
@@ -40,12 +40,12 @@ class StreamTransport(transports.Transport):
             # call connection_lost
             self._call_connection_lost(None)
 
-    def pause(self):
+    def pause_reasing(self):
         if self._closing:
             return
         self._handle.stop_read()
 
-    def resume(self):
+    def resume_reading(self):
         if self._closing:
             return
         self._handle.start_read(self._on_read)
@@ -101,7 +101,7 @@ class StreamTransport(transports.Transport):
                 finally:
                     self.close()
             else:
-                tulip_log.warning('error reading from connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
+                logger.warning('error reading from connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
                 exc = ConnectionError(error, pyuv.errno.strerror(error))
                 self._close(exc)
         else:
@@ -109,7 +109,7 @@ class StreamTransport(transports.Transport):
 
     def _on_write(self, handle, error):
         if error is not None:
-            tulip_log.warning('error writing to connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
+            logger.warning('error writing to connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
             exc = ConnectionError(error, pyuv.errno.strerror(error))
             self._close(exc)
             return
@@ -176,7 +176,7 @@ class UDPTransport(transports.DatagramTransport):
 
     def _on_recv(self, handle, addr, flags, data, error):
         if error is not None:
-            tulip_log.warning('error reading from UDP endpoint: {} - {}'.format(error, pyuv.errno.strerror(error)))
+            logger.warning('error reading from UDP endpoint: {} - {}'.format(error, pyuv.errno.strerror(error)))
             exc = ConnectionError(error, pyuv.errno.strerror(error))
             self._close(exc)
         else:
@@ -184,7 +184,7 @@ class UDPTransport(transports.DatagramTransport):
 
     def _on_send(self, handle, error):
         if error is not None:
-            tulip_log.warning('error sending to UDP endpoint: {} - {}'.format(error, pyuv.errno.strerror(error)))
+            logger.warning('error sending to UDP endpoint: {} - {}'.format(error, pyuv.errno.strerror(error)))
             exc = ConnectionError(error, pyuv.errno.strerror(error))
             self._close(exc)
 
@@ -197,14 +197,14 @@ class TCPTransport(StreamTransport):
 
 def _tcp_listen_cb(server, error):
     if error is not None:
-        tulip_log.warning('error processing incoming TCP connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
+        logger.warning('error processing incoming TCP connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
         return
     conn = pyuv.TCP(server.loop)
     try:
         server.accept(conn)
     except pyuv.error.TCPError as e:
         error = e.args[0]
-        tulip_log.warning('error accepting incoming TCP connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
+        logger.warning('error accepting incoming TCP connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
         return
     addr = conn.getpeername()
     return TCPTransport(conn.loop._rose_loop, server.protocol_factory(), conn, extra={'addr': addr})
@@ -249,14 +249,14 @@ class PipeTransport(StreamTransport):
 
 def _pipe_listen_cb(server, error):
     if error is not None:
-        tulip_log.warning('error processing incoming Pipe connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
+        logger.warning('error processing incoming Pipe connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
         return
     conn = pyuv.Pipe(server.loop)
     try:
         server.accept(conn)
     except pyuv.error.PipeError as e:
         error = e.args[0]
-        tulip_log.warning('error accepting incoming Pipe connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
+        logger.warning('error accepting incoming Pipe connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
         return
     return PipeTransport(conn.loop._rose_loop, server.protocol_factory(), conn)
 
