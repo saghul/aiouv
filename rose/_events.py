@@ -156,11 +156,15 @@ class EventLoop(base_events.BaseEventLoop):
     # start_serving - inherited from BaseEventLoop
     # start_serving_datagram - inherited from BaseEventLoop
 
-    def _start_serving(self, protocol_factory, sock, ssl=None):
+    def _start_serving(self, protocol_factory, sock, sslcontext=None, server=None):
         # Needed by BaseEventLoop.start_serving
-        self.add_reader(sock.fileno(), self._accept_connection, protocol_factory, sock, ssl)
+        self.add_reader(sock.fileno(), self._accept_connection, protocol_factory, sock, sslcontext, server)
 
-    def _accept_connection(self, protocol_factory, sock, ssl=None):
+    def _stop_serving(self, sock):
+        self.remove_reader(sock.fileno())
+        sock.close()
+
+    def _accept_connection(self, protocol_factory, sock, sslcontext=None, server=None):
         try:
             conn, addr = sock.accept()
             conn.setblocking(False)
@@ -174,10 +178,10 @@ class EventLoop(base_events.BaseEventLoop):
             # TODO: Someone will want an error handler for this.
             logger.exception('Accept failed')
         else:
-            if ssl:
-                self._make_ssl_transport(conn, protocol_factory(), ssl, None, server_side=True, extra={'addr': addr})
+            if sslcontext:
+                self._make_ssl_transport(conn, protocol_factory(), sslcontext, None, server_side=True, extra={'addr': addr}, server=server)
             else:
-                self._make_socket_transport(conn, protocol_factory(), extra={'addr': addr})
+                self._make_socket_transport(conn, protocol_factory(), extra={'addr': addr}, server=server)
         # It's now up to the protocol to handle the connection.
 
     def stop_serving(self, sock):
@@ -381,11 +385,11 @@ class EventLoop(base_events.BaseEventLoop):
 
     # Private / internal methods
 
-    def _make_socket_transport(self, sock, protocol, waiter=None, *, extra=None):
-        return selector_events._SelectorSocketTransport(self, sock, protocol, waiter, extra)
+    def _make_socket_transport(self, sock, protocol, waiter=None, *, extra=None, server=None):
+        return selector_events._SelectorSocketTransport(self, sock, protocol, waiter, extra, server)
 
-    def _make_ssl_transport(self, rawsock, protocol, sslcontext, waiter, *, server_side=False, extra=None):
-        return selector_events._SelectorSslTransport(self, rawsock, protocol, sslcontext, waiter, server_side, extra)
+    def _make_ssl_transport(self, rawsock, protocol, sslcontext, waiter, *, server_side=False, server_hostname=None, extra=None, server=None):
+        return selector_events._SelectorSslTransport(self, rawsock, protocol, sslcontext, waiter, server_side, server_hostname, extra, server)
 
     def _make_datagram_transport(self, sock, protocol, address=None, extra=None):
         return selector_events._SelectorDatagramTransport(self, sock, protocol, address, extra)
