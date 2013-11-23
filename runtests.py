@@ -25,7 +25,7 @@ import importlib.machinery
 assert sys.version >= '3.3', 'Please use Python 3.3 or higher.'
 
 
-TULIP_DIR = os.path.join(os.path.dirname(__file__), 'tulip', 'tests')
+TULIP_DIR = os.path.join(os.path.dirname(__file__), 'asyncio', 'tests')
 ROSE_DIR = os.path.join(os.path.dirname(__file__), 'tests')
 
 
@@ -95,9 +95,9 @@ def main():
   elif v >= 4:
     logger.setLevel(logging.DEBUG)
 
-  import tulip
+  import asyncio
   import rose
-  tulip.set_event_loop_policy(rose.EventLoopPolicy())
+  asyncio.set_event_loop_policy(rose.EventLoopPolicy())
 
   result = unittest.TextTestRunner(verbosity=v).run(tests)
   sys.exit(not result.wasSuccessful())

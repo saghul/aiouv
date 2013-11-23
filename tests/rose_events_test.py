@@ -2,11 +2,13 @@
 import unittest
 from rose import EventLoop
 
-import sys
-sys.path.append('../tulip/tests')
-import events_test
+import imp
+import os
 
-class RoseEventLoopTests(events_test.EventLoopTestsMixin, unittest.TestCase):
+test_events = imp.load_source('test_events', os.path.join(os.path.dirname(__file__), '../asyncio/tests/test_events.py'))
+
+
+class RoseEventLoopTests(test_events.EventLoopTestsMixin, unittest.TestCase):
     def create_event_loop(self):
         return EventLoop()
 
