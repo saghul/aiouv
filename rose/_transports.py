@@ -20,7 +20,7 @@ class StreamTransport(transports.Transport):
         self._handle = handle
 
         self._closing = False
-        self._shut = False
+        self._shutting = False
 
         self._handle.start_read(self._on_read)
         self._loop.call_soon(self._protocol.connection_made, self)
@@ -33,7 +33,7 @@ class StreamTransport(transports.Transport):
         if self._closing:
             return
         self._closing = True
-        if not self._shut:
+        if not self._shutting:
             self._handle.shutdown(self._on_shutdown)
         else:
             # The handle is already shut, someone called write_eof, so just
@@ -52,6 +52,7 @@ class StreamTransport(transports.Transport):
 
     def write(self, data):
         assert isinstance(data, bytes), repr(data)
+        assert not self._shutting, 'Cannot call write() after write_eof()'
         if not data:
             return
         if self._closing:
@@ -59,6 +60,7 @@ class StreamTransport(transports.Transport):
         self._handle.write(data, self._on_write)
 
     def writelines(self, seq):
+        assert not self._shutting, 'Cannot call writelines() after write_eof()'
         if not seq:
             return
         if self._closing:
@@ -66,9 +68,9 @@ class StreamTransport(transports.Transport):
         self._handle.writelines(seq, self._on_write)
 
     def write_eof(self):
-        # TODO: add shutting flag to prevent this from being called multiple times
-        if self._closing:
+        if self._shutting or self._closing:
             return
+        self._shutting = True
         self._handle.shutdown(self._on_shutdown)
 
     def can_write_eof(self):
@@ -115,9 +117,7 @@ class StreamTransport(transports.Transport):
             return
 
     def _on_shutdown(self, handle, error):
-        self._shut = True
-        if self._closing:
-            self._call_connection_lost(None)
+        pass
 
 
 class UDPTransport(transports.DatagramTransport):
