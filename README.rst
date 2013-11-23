@@ -9,16 +9,16 @@ Overview
 
 `PEP-3156 <http://www.python.org/dev/peps/pep-3156/>`_ is a proposal for asynchronous I/O in Python,
 starting with Python 3.3. The reference implementation is codenamed Tulip and can be found
-`here <https://code.google.com/p/tulip/>`_.
+`here <https://code.google.com/p/tulip/>`_. It will be part of the standard library in 3.4 and also
+available in PyPI under the name **asyncio**.
 
-Rose is an event loop implementation for Tulip based on `pyuv <https://github.com/saghul/pyuv>`_.
+Rose is an event loop implementation for asincio based on `pyuv <https://github.com/saghul/pyuv>`_.
 
-Rose depends on Tulip and pyuv >= 0.10.0, you can install them by doing:
+Rose depends on asyncio and pyuv >= 0.10.0, you can install them by doing:
 
 ::
 
-    hg clone https://code.google.com/p/tulip/
-    pip install -U pyuv
+    pip install -U asyncio pyuv
 
 
 Extra API functions
@@ -77,6 +77,7 @@ From the toplevel directory, run:
 
 ::
 
-    export PYTHONPATH=tulip/
+    hg clone https://code.google.com/p/tulip/ asyncio
+    export PYTHONPATH=asyncio/
     python runtests.py -v rose_events_test
 
