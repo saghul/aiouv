@@ -218,23 +218,21 @@ def listen_tcp(loop, protocol_factory, addr):
     return handle
 
 
-def _tcp_connect_cb(handle, error):
-    if error is not None:
-        handle.waiter.set_exception(ConnectionError(error, pyuv.errno.strerror(error)))
-    else:
-        handle.waiter.set_result(None)
-
-
 @tasks.coroutine
 def connect_tcp(loop, protocol_factory, addr, bindaddr=None):
     protocol = protocol_factory()
     waiter = futures.Future(loop=loop)
 
+    def connect_cb(handle, error):
+        if error is not None:
+            waiter.set_exception(ConnectionError(error, pyuv.errno.strerror(error)))
+        else:
+            waiter.set_result(None)
+
     handle = pyuv.TCP(loop._loop)
     if bindaddr is not None:
         handle.bind((interface, port))
-    handle.connect(addr, _tcp_connect_cb)
-    handle.waiter = waiter
+    handle.connect(addr, connect_cb)
 
     yield from waiter
 
@@ -269,21 +267,19 @@ def listen_pipe(loop, protocol_factory, name):
     return handle
 
 
-def _pipe_connect_cb(handle, error):
-    if error is not None:
-        handle.waiter.set_exception(ConnectionError(error, pyuv.errno.strerror(error)))
-    else:
-        handle.waiter.set_result(None)
-
-
 @tasks.coroutine
 def connect_pipe(loop, protocol_factory, name):
     protocol = protocol_factory()
     waiter = futures.Future(loop=loop)
 
+    def connect_cb(handle, error):
+        if error is not None:
+            waiter.set_exception(ConnectionError(error, pyuv.errno.strerror(error)))
+        else:
+            waiter.set_result(None)
+
     handle = pyuv.Pipe(loop._loop)
-    handle.connect(name, _pipe_connect_cb)
-    handle.waiter = waiter
+    handle.connect(name, connect_cb)
 
     yield from waiter
 
