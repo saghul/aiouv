@@ -21,6 +21,10 @@ Rose depends on asyncio and pyuv >= 0.10.0, you can install them by doing:
     pip install -U asyncio pyuv
 
 
+**NOTE:** Currently rose might be a bit behind asyncio, if an API changed rose might not be updated yet.
+I hope to resume development soon and make a release on PyPI. Pull requests are of course welcome :-)
+
+
 Extra API functions
 ===================
 
