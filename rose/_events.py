@@ -30,8 +30,8 @@ _MAX_WORKERS = 5
 
 class TimerHandle(events.Handle):
 
-    def __init__(self, callback, args, timer):
-        super().__init__(callback, args)
+    def __init__(self, callback, args, loop, timer):
+        super().__init__(callback, args, loop)
         self._timer = timer
 
     def cancel(self):
@@ -118,7 +118,7 @@ class EventLoop(base_events.BaseEventLoop):
         if delay <= 0:
             return self.call_soon(callback, *args)
         timer = pyuv.Timer(self._loop)
-        handler = TimerHandle(callback, args, timer)
+        handler = TimerHandle(callback, args, self, timer)
         timer.handler = handler
         timer.start(self._timer_cb, delay, 0)
         self._timers.append(timer)
