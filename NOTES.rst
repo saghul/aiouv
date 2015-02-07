@@ -9,7 +9,7 @@ implemented like they are in uv_events.py
 Wakeup
 ======
 
-While a socketpair + a Poll handle could have been used, pyuv
+While a socket pair + a Poll handle could have been used, pyuv
 comes with a dedicated handle for this task, Async.
 
 Ordering
@@ -26,7 +26,7 @@ is preserved.
 Stop
 ====
 
-Loop stop is always executed at the begining of the next event loop
+Loop stop is always executed at the beginning of the next event loop
 iteration. Calling stop will also prevent the loop from blocking for io
 on that iteration. If any callback raises an exception, the loop is stopped.
 

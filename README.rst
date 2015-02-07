@@ -9,21 +9,16 @@ Overview
 
 `PEP-3156 <http://www.python.org/dev/peps/pep-3156/>`_ is a proposal for asynchronous I/O in Python,
 starting with Python 3.3. The reference implementation is codenamed Tulip and can be found
-`here <https://code.google.com/p/tulip/>`_. It will be part of the standard library in 3.4 and also
+`here <https://code.google.com/p/tulip/>`_. It's part of the standard library in 3.4 and also
 available in PyPI under the name **asyncio**.
 
-Rose is an event loop implementation for asincio based on `pyuv <https://github.com/saghul/pyuv>`_.
+Rose is an event loop implementation for asyncio based on `pyuv <https://github.com/saghul/pyuv>`_.
 
 Rose depends on asyncio and pyuv >= 0.10.0, you can install them by doing:
 
 ::
 
     pip install -U asyncio pyuv
-
-
-**NOTE:** Currently rose might be a bit behind asyncio, if an API changed rose might not be updated yet.
-I hope to resume development soon and make a release on PyPI. Pull requests are of course welcome :-)
-
 
 Extra API functions
 ===================
@@ -49,7 +44,7 @@ address is bound to it.
 Returns a tuple with the created transport and protocol.
 
 listen_pipe(loop, protocol_factory, name)
-----------------------------------------
+-----------------------------------------
 
 Creates a Pipe server listening in the specified pipe name. On new
 connections a new `PipeTransport` will be created and a protocol will be created using

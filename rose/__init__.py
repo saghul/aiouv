@@ -2,6 +2,8 @@
 import asyncio
 import threading
 
+from asyncio import coroutines, set_event_loop_policy, set_event_loop, new_event_loop
+
 from rose._events import EventLoop
 from rose._transports import connect_tcp, listen_tcp, connect_pipe, listen_pipe, create_udp_endpoint
 

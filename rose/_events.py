@@ -110,7 +110,7 @@ class EventLoop(base_events.BaseEventLoop):
     # Methods scheduling callbacks. All these return Handles.
 
     def call_soon(self, callback, *args):
-        handler = events.make_handle(callback, args)
+        handler = events.Handle(callback, args, self)
         self._add_callback(handler)
         return handler
 
@@ -136,7 +136,7 @@ class EventLoop(base_events.BaseEventLoop):
     # set_default_executor - inherited from BaseEventLoop
 
     def call_soon_threadsafe(self, callback, *args):
-        handler = events.make_handle(callback, args)
+        handler = events.Handle(callback, args, self)
         # We don't use _add_callback here because starting the Idle handle
         # is not threadsafe. Instead, we queue the callback and in the Async
         # handle callback (which is run in the loop thread) we start the
@@ -194,7 +194,7 @@ class EventLoop(base_events.BaseEventLoop):
     # False if there was nothing to delete.
 
     def add_reader(self, fd, callback, *args):
-        handler = events.make_handle(callback, args)
+        handler = events.Handle(callback, args, self)
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
@@ -224,7 +224,7 @@ class EventLoop(base_events.BaseEventLoop):
             return False
 
     def add_writer(self, fd, callback, *args):
-        handler = events.make_handle(callback, args)
+        handler = events.Handle(callback, args, self)
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
@@ -362,7 +362,7 @@ class EventLoop(base_events.BaseEventLoop):
     def add_signal_handler(self, sig, callback, *args):
         self._validate_signal(sig)
         signal_h = pyuv.Signal(self._loop)
-        handler = events.make_handle(callback, args)
+        handler = events.Handle(callback, args, self)
         signal_h.handler = handler
         try:
             signal_h.start(self._signal_cb, sig)
