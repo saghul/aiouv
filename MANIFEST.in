@@ -1,0 +1,3 @@
+include examples/*.py
+include tests/*.py
+include runtests.py

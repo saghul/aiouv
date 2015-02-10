@@ -18,15 +18,13 @@ aiouv is an event loop implementation for asincio based on `pyuv <https://github
 Installation
 ============
 
-aiouv depends on asyncio >= 0.4.1 and pyuv >= 1.0.
+aiouv depends on pyuv >= 1.0::
 
-You can install them by doing::
+    pip3 install -U pyuv
 
-    pip install -U asyncio pyuv
+On Python 3.3, aiouv also requires asyncio >= 0.4.1::
 
-
-**NOTE:** Currently aiouv might be a bit behind asyncio, if an API changed aiouv might not be updated yet.
-I hope to resume development soon and make a release on PyPI. Pull requests are of course welcome :-)
+    pip3 install -U asyncio
 
 
 Extra API functions
