@@ -92,13 +92,14 @@ class EventLoop(base_events.BaseEventLoop):
         self._ready.clear()
         self._timers.clear()
 
-        def cb(handle):
+        handles = self._loop.handles
+        for handle in handles:
             if not handle.closed:
                 handle.close()
-        self._loop.walk(cb)
 
         # Run a loop iteration so that close callbacks are called and resources are freed
         self._loop.run(pyuv.UV_RUN_DEFAULT)
+
         del self._loop._rose_loop
         self._loop = None
 

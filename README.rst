@@ -18,7 +18,7 @@ aiouv is an event loop implementation for asincio based on `pyuv <https://github
 Installation
 ============
 
-aiouv depends on asyncio >= 0.4.1 and pyuv >= 0.10.0.
+aiouv depends on asyncio >= 0.4.1 and pyuv >= 1.0.
 
 You can install them by doing::
 
