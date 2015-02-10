@@ -1,7 +1,7 @@
 
-======================================
-rose: a PEP-3156 compatible event loop
-======================================
+=======================================
+aiouv: a PEP-3156 compatible event loop
+=======================================
 
 
 Overview
@@ -21,7 +21,7 @@ Rose depends on asyncio and pyuv >= 0.10.0, you can install them by doing:
     pip install -U asyncio pyuv
 
 
-**NOTE:** Currently rose might be a bit behind asyncio, if an API changed rose might not be updated yet.
+**NOTE:** Currently aiouv might be a bit behind asyncio, if an API changed aiouv might not be updated yet.
 I hope to resume development soon and make a release on PyPI. Pull requests are of course welcome :-)
 
 
@@ -83,5 +83,5 @@ From the toplevel directory, run:
 
     hg clone https://code.google.com/p/tulip/ asyncio
     export PYTHONPATH=asyncio/
-    python runtests.py -v rose_events_test
+    python runtests.py -v aiouv_events_test
 

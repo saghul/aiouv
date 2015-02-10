@@ -62,7 +62,7 @@ and here: https://github.com/saghul/pyuv/commit/6e71bf7da350c6ced6bdc4375ed6ba8c
 Callback execution
 ==================
 
-Currently rose runs all callbacks in an Idle handle, which runs before i/o has been performed and
+Currently aiouv runs all callbacks in an Idle handle, which runs before i/o has been performed and
 prevents the loop from blocking for i/o in case it's still active.
 All operations will queue the handles in the _ready queue and the aforementioned Idle handle will
 execute them in order.

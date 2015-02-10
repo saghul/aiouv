@@ -96,8 +96,8 @@ def main():
     logger.setLevel(logging.DEBUG)
 
   import asyncio
-  import rose
-  asyncio.set_event_loop_policy(rose.EventLoopPolicy())
+  import aiouv
+  asyncio.set_event_loop_policy(aiouv.EventLoopPolicy())
 
   result = unittest.TextTestRunner(verbosity=v).run(tests)
   sys.exit(not result.wasSuccessful())
