@@ -16,11 +16,9 @@ try:
 except ImportError:
     signal = None
 
+import asyncio
 from asyncio import base_events
-from asyncio import events
-from asyncio import futures
 from asyncio import selector_events
-from asyncio import tasks
 from asyncio.log import logger
 
 
@@ -28,10 +26,10 @@ from asyncio.log import logger
 _MAX_WORKERS = 5
 
 
-class TimerHandle(events.Handle):
+class TimerHandle(asyncio.Handle):
 
-    def __init__(self, callback, args, timer):
-        super().__init__(callback, args)
+    def __init__(self, callback, args, timer, loop):
+        super().__init__(callback, args, loop)
         self._timer = timer
 
     def cancel(self):
@@ -75,7 +73,7 @@ class EventLoop(base_events.BaseEventLoop):
 
     def run_until_complete(self, future):
         _stop_callback = lambda x: self.stop()
-        future = tasks.async(future, loop=self)
+        future = asyncio.async(future, loop=self)
         future.add_done_callback(_stop_callback)
         self.run_forever()
         future.remove_done_callback(_stop_callback)
@@ -110,7 +108,7 @@ class EventLoop(base_events.BaseEventLoop):
     # Methods scheduling callbacks. All these return Handles.
 
     def call_soon(self, callback, *args):
-        handler = events.make_handle(callback, args)
+        handler = asyncio.Handle(callback, args, self)
         self._add_callback(handler)
         return handler
 
@@ -118,7 +116,7 @@ class EventLoop(base_events.BaseEventLoop):
         if delay <= 0:
             return self.call_soon(callback, *args)
         timer = pyuv.Timer(self._loop)
-        handler = TimerHandle(callback, args, timer)
+        handler = TimerHandle(callback, args, timer, self)
         timer.handler = handler
         timer.start(self._timer_cb, delay, 0)
         self._timers.append(timer)
@@ -136,7 +134,7 @@ class EventLoop(base_events.BaseEventLoop):
     # set_default_executor - inherited from BaseEventLoop
 
     def call_soon_threadsafe(self, callback, *args):
-        handler = events.make_handle(callback, args)
+        handler = asyncio.Handle(callback, args, self)
         # We don't use _add_callback here because starting the Idle handle
         # is not threadsafe. Instead, we queue the callback and in the Async
         # handle callback (which is run in the loop thread) we start the
@@ -194,7 +192,7 @@ class EventLoop(base_events.BaseEventLoop):
     # False if there was nothing to delete.
 
     def add_reader(self, fd, callback, *args):
-        handler = events.make_handle(callback, args)
+        handler = asyncio.Handle(callback, args, self)
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
@@ -224,7 +222,7 @@ class EventLoop(base_events.BaseEventLoop):
             return False
 
     def add_writer(self, fd, callback, *args):
-        handler = events.make_handle(callback, args)
+        handler = asyncio.Handle(callback, args, self)
         try:
             poll_h = self._fd_map[fd]
         except KeyError:
@@ -256,7 +254,7 @@ class EventLoop(base_events.BaseEventLoop):
     # Completion based I/O methods returning Futures.
 
     def sock_recv(self, sock, n):
-        fut = futures.Future(loop=self)
+        fut = asyncio.Future(loop=self)
         self._sock_recv(fut, False, sock, n)
         return fut
 
@@ -280,7 +278,7 @@ class EventLoop(base_events.BaseEventLoop):
             fut.set_result(data)
 
     def sock_sendall(self, sock, data):
-        fut = futures.Future(loop=self)
+        fut = asyncio.Future(loop=self)
         if data:
             self._sock_sendall(fut, False, sock, data)
         else:
@@ -312,7 +310,7 @@ class EventLoop(base_events.BaseEventLoop):
         # self.getaddrinfo() for you here.  But verifying this is
         # complicated; the socket module doesn't have a pattern for
         # IPv6 addresses (there are too many forms, apparently).
-        fut = futures.Future(loop=self)
+        fut = asyncio.Future(loop=self)
         self._sock_connect(fut, False, sock, address)
         return fut
 
@@ -338,7 +336,7 @@ class EventLoop(base_events.BaseEventLoop):
             fut.set_exception(exc)
 
     def sock_accept(self, sock):
-        fut = futures.Future(loop=self)
+        fut = asyncio.Future(loop=self)
         self._sock_accept(fut, False, sock)
         return fut
 
@@ -362,7 +360,7 @@ class EventLoop(base_events.BaseEventLoop):
     def add_signal_handler(self, sig, callback, *args):
         self._validate_signal(sig)
         signal_h = pyuv.Signal(self._loop)
-        handler = events.make_handle(callback, args)
+        handler = asyncio.Handle(callback, args, self)
         signal_h.handler = handler
         try:
             signal_h.start(self._signal_cb, sig)
@@ -407,7 +405,7 @@ class EventLoop(base_events.BaseEventLoop):
         # TODO
         raise NotImplementedError
 
-    @tasks.coroutine
+    @asyncio.coroutine
     def _make_subprocess_transport(self, protocol, args, shell, stdin, stdout, stderr, bufsize, extra=None, **kwargs):
         if sys.platform == 'win32':
             # TODO

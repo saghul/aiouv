@@ -12,11 +12,15 @@ starting with Python 3.3. The reference implementation is codenamed Tulip and ca
 `here <https://code.google.com/p/tulip/>`_. It will be part of the standard library in 3.4 and also
 available in PyPI under the name **asyncio**.
 
-Rose is an event loop implementation for asincio based on `pyuv <https://github.com/saghul/pyuv>`_.
+aiouv is an event loop implementation for asincio based on `pyuv <https://github.com/saghul/pyuv>`_.
 
-Rose depends on asyncio and pyuv >= 0.10.0, you can install them by doing:
 
-::
+Installation
+============
+
+aiouv depends on asyncio >= 0.4.1 and pyuv >= 0.10.0.
+
+You can install them by doing::
 
     pip install -U asyncio pyuv
 
@@ -28,7 +32,7 @@ I hope to resume development soon and make a release on PyPI. Pull requests are 
 Extra API functions
 ===================
 
-Rose provides a few functions to create TCP, and UDP connections as well as cross
+aiouv provides a few functions to create TCP, and UDP connections as well as cross
 platform named pipes support.
 
 listen_tcp(loop, protocol_factory, addr)
