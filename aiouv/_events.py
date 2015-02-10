@@ -98,7 +98,7 @@ class EventLoop(base_events.BaseEventLoop):
                 handle.close()
 
         # Run a loop iteration so that close callbacks are called and resources are freed
-        self._loop.run(pyuv.UV_RUN_DEFAULT)
+        self._loop.run(pyuv.UV_RUN_ONCE)
 
         del self._loop._rose_loop
         self._loop = None

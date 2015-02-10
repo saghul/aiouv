@@ -9,10 +9,10 @@ Overview
 
 `PEP-3156 <http://www.python.org/dev/peps/pep-3156/>`_ is a proposal for asynchronous I/O in Python,
 starting with Python 3.3. The reference implementation is codenamed Tulip and can be found
-`here <https://code.google.com/p/tulip/>`_. It will be part of the standard library in 3.4 and also
+`here <https://code.google.com/p/tulip/>`_. It's part of the standard library in 3.4 and also
 available in PyPI under the name **asyncio**.
 
-aiouv is an event loop implementation for asincio based on `pyuv <https://github.com/saghul/pyuv>`_.
+aiouv is an event loop implementation for asyncio based on `pyuv <https://github.com/saghul/pyuv>`_.
 
 
 Installation
@@ -21,12 +21,9 @@ Installation
 aiouv depends on pyuv >= 1.0::
 
     pip3 install -U pyuv
-
 On Python 3.3, aiouv also requires asyncio >= 0.4.1::
 
     pip3 install -U asyncio
-
-
 Extra API functions
 ===================
 
@@ -51,7 +48,7 @@ address is bound to it.
 Returns a tuple with the created transport and protocol.
 
 listen_pipe(loop, protocol_factory, name)
-----------------------------------------
+-----------------------------------------
 
 Creates a Pipe server listening in the specified pipe name. On new
 connections a new `PipeTransport` will be created and a protocol will be created using
