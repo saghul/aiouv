@@ -2,7 +2,7 @@
 
 # Release procedure:
 #  - fill the changelog?
-#  - run tests
+#  - run tests: tox
 #  - update version in setup.py
 #  - set release date in the changelog?
 #  - check that "python setup.py sdist" contains all files tracked by
