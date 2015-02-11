@@ -3,10 +3,10 @@ import argparse
 import asyncio
 import signal
 
-import rose
+import aiouv
 
 
-loop = rose.EventLoop()
+loop = aiouv.EventLoop()
 
 
 class EchoServerProtocol(asyncio.Protocol):
@@ -43,26 +43,26 @@ class EchoClientProtocol(asyncio.Protocol):
 
 
 def start_tcp_server(host, port):
-    handle = rose.listen_tcp(loop, EchoServerProtocol, (host, port))
+    handle = aiouv.listen_tcp(loop, EchoServerProtocol, (host, port))
     print('Echo TCP server listening')
     return handle
 
 
 def start_tcp_client(host, port):
-    t = asyncio.async(rose.connect_tcp(loop, EchoClientProtocol, (host, port)), loop=loop)
+    t = asyncio.async(aiouv.connect_tcp(loop, EchoClientProtocol, (host, port)), loop=loop)
     transport, protocol = loop.run_until_complete(t)
     print('Echo TCP client connected')
     return transport, protocol
 
 
 def start_pipe_server(name):
-    handle = rose.listen_pipe(loop, EchoServerProtocol, name)
+    handle = aiouv.listen_pipe(loop, EchoServerProtocol, name)
     print('Echo Pipe server listening')
     return handle
 
 
 def start_pipe_client(name):
-    t = asyncio.async(rose.connect_pipe(loop, EchoClientProtocol, name), loop=loop)
+    t = asyncio.async(aiouv.connect_pipe(loop, EchoClientProtocol, name), loop=loop)
     transport, protocol = loop.run_until_complete(t)
     print('Echo Pipe client connected')
     return transport, protocol
@@ -82,7 +82,7 @@ parser.add_argument(
     '--pipe', action="store_true", dest='pipe',
     default=False, help='Use named pipes')
 parser.add_argument(
-    'addr', action="store", 
+    'addr', action="store",
     help='address / pipe name')
 
 
