@@ -207,7 +207,7 @@ def _tcp_listen_cb(server, error):
         logger.warning('error accepting incoming TCP connection: {} - {}'.format(error, pyuv.errno.strerror(error)))
         return
     addr = conn.getpeername()
-    return TCPTransport(conn.loop._rose_loop, server.protocol_factory(), conn, extra={'addr': addr})
+    return TCPTransport(conn.loop._rose_loop, server.protocol_factory(), conn, extra={'peername': addr})
 
 
 def listen_tcp(loop, protocol_factory, addr):
@@ -237,7 +237,7 @@ def connect_tcp(loop, protocol_factory, addr, bindaddr=None):
     yield from waiter
 
     addr = handle.getpeername()
-    transport = TCPTransport(loop, protocol, handle, extra={'addr': addr})
+    transport = TCPTransport(loop, protocol, handle, extra={'peername': addr})
     return transport, protocol
 
 
@@ -294,6 +294,6 @@ def create_udp_endpoint(loop, protocol_factory, local_addr=None, remote_addr=Non
     handle.bind(local_addr or ('', 0))
     protocol = protocol_factory()
     addr = handle.getsockname()
-    transport = UDPTransport(loop, protocol, handle, remote_addr, extra={'addr': addr})
+    transport = UDPTransport(loop, protocol, handle, remote_addr, extra={'sockname': addr})
     return transport, protocol
 

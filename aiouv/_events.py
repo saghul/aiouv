@@ -178,9 +178,9 @@ class EventLoop(base_events.BaseEventLoop):
             logger.exception('Accept failed')
         else:
             if sslcontext:
-                self._make_ssl_transport(conn, protocol_factory(), sslcontext, None, server_side=True, extra={'addr': addr}, server=server)
+                self._make_ssl_transport(conn, protocol_factory(), sslcontext, None, server_side=True, extra={'peername': addr}, server=server)
             else:
-                self._make_socket_transport(conn, protocol_factory(), extra={'addr': addr}, server=server)
+                self._make_socket_transport(conn, protocol_factory(), extra={'peername': addr}, server=server)
         # It's now up to the protocol to handle the connection.
 
     def stop_serving(self, sock):
