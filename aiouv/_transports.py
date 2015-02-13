@@ -291,8 +291,7 @@ def create_udp_endpoint(loop, protocol_factory, local_addr=None, remote_addr=Non
     if not (local_addr or remote_addr):
         raise ValueError('local or remote address must be specified')
     handle = pyuv.UDP(loop._loop)
-    if local_addr:
-        handle.bind(local_addr)
+    handle.bind(local_addr or ('', 0))
     protocol = protocol_factory()
     addr = handle.getsockname()
     transport = UDPTransport(loop, protocol, handle, remote_addr, extra={'addr': addr})
