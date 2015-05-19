@@ -52,6 +52,7 @@ class EventLoop(base_events.BaseEventLoop):
         self._loop._rose_loop = self
         self._default_executor = None
         self._last_exc = None
+        self._running = False
 
         self._fd_map = {}
         self._signal_handlers = {}
