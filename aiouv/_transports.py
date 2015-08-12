@@ -40,7 +40,7 @@ class StreamTransport(transports.Transport):
             # call connection_lost
             self._call_connection_lost(None)
 
-    def pause_reasing(self):
+    def pause_reading(self):
         if self._closing:
             return
         self._handle.stop_read()
